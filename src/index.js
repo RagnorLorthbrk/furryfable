@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import axios from "axios";
+import { generateImages } from "./imageGenerator.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -25,19 +26,21 @@ function slugify(text) {
 
 async function generateBlog(topic) {
   const prompt = `
-You are a professional SEO content writer.
+You are a professional SEO content writer for a premium pet brand (FurryFable).
 
 Write a high-quality blog post about:
 "${topic}"
 
-Guidelines:
-- Let content length be decided naturally for best SEO
-- Use proper H1, H2, H3 structure
-- Add internal linking suggestions where relevant:
-  - link to homepage if relevant
-  - link to other related blog topics naturally
-- Write clean, human, non-AI sounding content
-- Output VALID HTML only (no markdown)
+Rules:
+- Decide length naturally for SEO
+- Proper H1, H2, H3 structure
+- Pet niche only (dogs, cats, pet care)
+- Human, trust-building tone
+- Add natural internal linking:
+  - Homepage: https://www.furryfable.com
+  - Relevant product categories if applicable
+  - Other related blog topics where relevant
+- Output VALID HTML only
 `;
 
   const response = await axios.post(
@@ -55,7 +58,6 @@ Guidelines:
 }
 
 async function main() {
-  // TEMP: static topic (later comes from Google Sheet)
   const topic =
     "The Ultimate Guide to Eco-Friendly Pet Supplies for Sustainable Living";
 
@@ -63,20 +65,22 @@ async function main() {
 
   const html = await generateBlog(topic);
 
-  // Ensure /blog exists
   if (!fs.existsSync(BLOG_DIR)) {
     fs.mkdirSync(BLOG_DIR, { recursive: true });
   }
 
   const slug = slugify(topic);
-  const filePath = path.join(BLOG_DIR, `blog-${slug}.html`);
+  const blogPath = path.join(BLOG_DIR, `blog-${slug}.html`);
 
-  fs.writeFileSync(filePath, html, "utf-8");
+  fs.writeFileSync(blogPath, html, "utf-8");
+  console.log("Blog saved:", blogPath);
 
-  console.log("Blog content generated and saved at:", filePath);
+  await generateImages({ title: topic, slug });
+
+  console.log("Images generated successfully");
 }
 
 main().catch(err => {
-  console.error("FATAL ERROR:", err.message);
+  console.error("FATAL ERROR:", err);
   process.exit(1);
 });
