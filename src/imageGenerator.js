@@ -19,23 +19,29 @@ export async function generateImages({ title, slug }) {
   }
 
   const basePrompt = `
-Premium lifestyle photography for a high-end pet brand.
+Premium lifestyle photography for a high-end pet brand (FurryFable).
 
-Subject:
-Dogs and/or cats in a real-life home environment.
+Scene:
+Dogs and/or cats in a real home environment using premium pet products.
 
 Style:
-- Clean, premium, professional
-- Soft natural lighting, warm tones
-- Minimal background, uncluttered
-- Realistic photography (not illustration, not cartoon)
-- No text, no logos, no overlays
+- Photorealistic (NOT illustration, NOT cartoon)
+- Clean, premium, modern
+- Soft natural lighting with warm tones
+- Minimal, uncluttered background
+- Lifestyle photography look
 
 Mood:
-Warm, calm, trustworthy, modern
+Calm, trustworthy, high-quality, aspirational
 
-Context:
-Blog topic: "${title}"
+Rules:
+- No text
+- No logos
+- No watermarks
+- No UI elements
+
+Blog topic context:
+"${title}"
 `;
 
   const images = [
@@ -49,7 +55,7 @@ Blog topic: "${title}"
     const result = await openai.images.generate({
       model: "gpt-image-1",
       prompt: basePrompt,
-      size: "2048x1080"
+      size: "1536x1024" // ✅ highest supported landscape size
     });
 
     const imageBase64 = result.data[0].b64_json;
