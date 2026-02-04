@@ -6,64 +6,46 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ OPENAI_API_KEY missing");
-  process.exit(1);
-}
-
 const IMAGE_DIR = "images/blog";
 
-export async function generateImages({ title, slug }) {
+function ensureDir() {
   if (!fs.existsSync(IMAGE_DIR)) {
     fs.mkdirSync(IMAGE_DIR, { recursive: true });
   }
+}
 
-  const basePrompt = `
-Premium lifestyle photography for a high-end pet brand (FurryFable).
+async function generateImage(prompt, filename, size) {
+  const result = await openai.images.generate({
+    model: "gpt-image-1",
+    prompt,
+    size
+  });
 
-Scene:
-Dogs and/or cats in a real home environment using premium pet products.
+  const image_base64 = result.data[0].b64_json;
+  const imageBuffer = Buffer.from(image_base64, "base64");
 
-Style:
-- Photorealistic (NOT illustration, NOT cartoon)
-- Clean, premium, modern
-- Soft natural lighting with warm tones
-- Minimal, uncluttered background
-- Lifestyle photography look
+  const filePath = path.join(IMAGE_DIR, filename);
+  fs.writeFileSync(filePath, imageBuffer);
 
-Mood:
-Calm, trustworthy, high-quality, aspirational
+  console.log(`Saved image: ${filePath}`);
+}
 
-Rules:
-- No text
-- No logos
-- No watermarks
-- No UI elements
+export async function generateBlogImages(topic, slug) {
+  ensureDir();
 
-Blog topic context:
-"${title}"
-`;
+  console.log("Generating featured image...");
+  await generateImage(
+    `High-quality professional blog featured image about ${topic}. 
+     Clean background, modern, premium, pet-focused, natural lighting.`,
+    `${slug}-featured.png`,
+    "1536x1024"
+  );
 
-  const images = [
-    { type: "featured", filename: `${slug}-featured.jpg` },
-    { type: "thumbnail", filename: `${slug}-thumbnail.jpg` }
-  ];
-
-  for (const img of images) {
-    console.log(`Generating ${img.type} image...`);
-
-    const result = await openai.images.generate({
-      model: "gpt-image-1",
-      prompt: basePrompt,
-      size: "1536x1024" // ✅ highest supported landscape size
-    });
-
-    const imageBase64 = result.data[0].b64_json;
-    const buffer = Buffer.from(imageBase64, "base64");
-
-    const filePath = path.join(IMAGE_DIR, img.filename);
-    fs.writeFileSync(filePath, buffer);
-
-    console.log(`Saved image: ${filePath}`);
-  }
+  console.log("Generating thumbnail image...");
+  await generateImage(
+    `Minimal square thumbnail image representing ${topic}. 
+     Simple composition, bold subject, pet-related.`,
+    `${slug}-thumb.png`,
+    "1024x1024"
+  );
 }
