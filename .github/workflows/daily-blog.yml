@@ -1,20 +1,19 @@
-name: Daily Blog Automation
+name: FurryFable Blog Automation (Base)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 11 * * *" # 5 PM IST
-
-permissions:
-  contents: write
+    - cron: "30 11 * * *" # 5:00 PM IST
 
 jobs:
-  generate-blog:
+  run:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -29,3 +28,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: node src/index.js
+
+      - name: Commit and push generated content
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add blog images
+          git commit -m "Add generated blog content and images" || echo "No changes to commit"
+          git push
