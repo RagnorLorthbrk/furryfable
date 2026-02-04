@@ -2,9 +2,14 @@ name: FurryFable Blog Automation (Base)
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "30 11 * * *" # 5:00 PM IST (UTC 11:30)
 
 jobs:
   run:
+    permissions:
+      contents: write
+
     runs-on: ubuntu-latest
 
     steps:
@@ -19,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run automation and commit output
+      - name: Run blog automation
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
@@ -27,9 +32,11 @@ jobs:
         run: |
           node src/index.js
 
+      - name: Commit and push generated blog
+        run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-          git add .
+          git add blog-*.html
           git commit -m "Add generated blog content" || echo "No changes to commit"
           git push
