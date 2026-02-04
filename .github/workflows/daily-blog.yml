@@ -1,14 +1,35 @@
-- name: Run automation
-  run: |
-    node src/index.js
+name: FurryFable Blog Automation (Base)
 
-    git config user.name "github-actions"
-    git config user.email "github-actions@github.com"
+on:
+  workflow_dispatch:
 
-    git add .
-    git commit -m "Add generated blog content" || echo "No changes to commit"
-    git push
-  env:
-    GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-    GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run automation and commit output
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node src/index.js
+
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add .
+          git commit -m "Add generated blog content" || echo "No changes to commit"
+          git push
