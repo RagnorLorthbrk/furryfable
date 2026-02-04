@@ -1,23 +1,35 @@
 import axios from "axios";
 import slugify from "slugify";
 
+function extractJSON(text) {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) {
+    throw new Error("No JSON object found in Gemini response");
+  }
+  return JSON.parse(match[0]);
+}
+
 export async function generateTopic() {
   const prompt = `
 You are an SEO strategist for a premium pet products brand.
+
 Website: https://www.furryfable.com
+Audience: USA and Canada
+Niche: dogs and cats only
 
-Generate ONE blog topic that:
-- Targets USA & Canada search intent
-- Focuses on dogs or cats only
-- Has strong organic ranking potential
-- Is informational, not salesy
-- Fits a premium pet lifestyle brand
+Generate ONE blog topic with high organic ranking potential.
 
-Return STRICT JSON only in this format:
+STRICT RULES:
+- Respond with JSON only
+- No markdown
+- No explanation
+- No backticks
+
+Required JSON format:
 {
-  "title": "",
-  "primary_keyword": "",
-  "image_theme": ""
+  "title": "string",
+  "primary_keyword": "string",
+  "image_theme": "string"
 }
 `;
 
@@ -28,14 +40,6 @@ Return STRICT JSON only in this format:
     }
   );
 
-  const text = res.data.candidates[0].content.parts[0].text.trim();
-  const data = JSON.parse(text);
+  const rawText = res.data.candidates[0].content.parts[0].text;
 
-  return {
-    date: new Date().toISOString().split("T")[0],
-    title: data.title,
-    primaryKeyword: data.primary_keyword,
-    slug: slugify(data.title, { lower: true, strict: true }),
-    imageTheme: data.image_theme
-  };
-}
+  const data = e
