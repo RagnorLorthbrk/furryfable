@@ -4,12 +4,16 @@ import slugify from "slugify";
 function extractJSON(text) {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) {
-    throw new Error("No JSON object found in Gemini response");
+    throw new Error("Gemini response did not contain JSON");
   }
   return JSON.parse(match[0]);
 }
 
 export async function generateTopic() {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is missing at runtime");
+  }
+
   const prompt = `
 You are an SEO strategist for a premium pet products brand.
 
@@ -17,15 +21,13 @@ Website: https://www.furryfable.com
 Audience: USA and Canada
 Niche: dogs and cats only
 
-Generate ONE blog topic with high organic ranking potential.
+Generate ONE blog topic with strong organic ranking potential.
 
-STRICT RULES:
-- Respond with JSON only
-- No markdown
-- No backticks
-- No explanations
+STRICT OUTPUT:
+Return ONLY valid JSON.
+No markdown. No explanations.
 
-Required JSON format:
+Format:
 {
   "title": "string",
   "primary_keyword": "string",
@@ -33,7 +35,7 @@ Required JSON format:
 }
 `;
 
-  const response = await axios.post(
+  const res = await axios.post(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       contents: [
@@ -44,14 +46,14 @@ Required JSON format:
     }
   );
 
-  const rawText =
-    response.data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const raw =
+    res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-  if (!rawText) {
+  if (!raw) {
     throw new Error("Empty response from Gemini");
   }
 
-  const data = extractJSON(rawText);
+  const data = extractJSON(raw);
 
   return {
     date: new Date().toISOString().split("T")[0],
