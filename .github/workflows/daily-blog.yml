@@ -1,5 +1,7 @@
 name: FurryFable Blog Automation (Base)
 
+permissions:
+  contents: write
 on:
   workflow_dispatch:
   schedule:
