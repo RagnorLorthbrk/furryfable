@@ -11,7 +11,7 @@ function extractJSON(text) {
 
 export async function generateTopic() {
   if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is missing at runtime");
+    throw new Error("GEMINI_API_KEY missing at runtime");
   }
 
   const prompt = `
@@ -23,11 +23,13 @@ Niche: dogs and cats only
 
 Generate ONE blog topic with strong organic ranking potential.
 
-STRICT OUTPUT:
-Return ONLY valid JSON.
-No markdown. No explanations.
+STRICT OUTPUT RULES:
+- Return ONLY valid JSON
+- No markdown
+- No explanations
+- No backticks
 
-Format:
+JSON format:
 {
   "title": "string",
   "primary_keyword": "string",
@@ -35,25 +37,26 @@ Format:
 }
 `;
 
-  const res = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+  const response = await axios.post(
+    `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       contents: [
         {
+          role: "user",
           parts: [{ text: prompt }]
         }
       ]
     }
   );
 
-  const raw =
-    res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const rawText =
+    response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-  if (!raw) {
+  if (!rawText) {
     throw new Error("Empty response from Gemini");
   }
 
-  const data = extractJSON(raw);
+  const data = extractJSON(rawText);
 
   return {
     date: new Date().toISOString().split("T")[0],
