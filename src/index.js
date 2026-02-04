@@ -5,15 +5,50 @@ const auth = new google.auth.GoogleAuth({
   scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
 
-async function testSheetRead() {
-  const sheets = google.sheets({ version: "v4", auth });
+const sheets = google.sheets({ version: "v4", auth });
 
+async function getNextRow() {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: process.env.GOOGLE_SHEET_ID,
-    range: "blogs!A1:F5"
+    range: "blogs!A2:F"
   });
 
-  console.log("Sheet data:", res.data.values);
+  const rows = res.data.values || [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const status = rows[i][4];
+    if (!status) {
+      return { row: rows[i], rowIndex: i + 2 };
+    }
+  }
+
+  return null;
 }
 
-testSheetRead();
+async function markInProgress(rowIndex) {
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: process.env.GOOGLE_SHEET_ID,
+    range: `blogs!E${rowIndex}`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [["IN_PROGRESS"]]
+    }
+  });
+}
+
+async function main() {
+  const next = await getNextRow();
+
+  if (!next) {
+    console.log("No unpublished rows found");
+    return;
+  }
+
+  console.log("Selected row:", next.row);
+
+  await markInProgress(next.rowIndex);
+
+  console.log(`Row ${next.rowIndex} marked as IN_PROGRESS`);
+}
+
+main();
