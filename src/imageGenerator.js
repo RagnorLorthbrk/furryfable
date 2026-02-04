@@ -11,7 +11,7 @@ if (!process.env.OPENAI_API_KEY) {
   process.exit(1);
 }
 
-const IMAGE_DIR = "images";
+const IMAGE_DIR = "images/blog";
 
 export async function generateImages({ title, slug }) {
   if (!fs.existsSync(IMAGE_DIR)) {
