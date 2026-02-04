@@ -1,9 +1,26 @@
-name: Placeholder
+name: Sheets Access Test
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 
 jobs:
-  test:
+  test-sheets:
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "Repo initialized"
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test Google Sheets read
+        run: node src/index.js
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
