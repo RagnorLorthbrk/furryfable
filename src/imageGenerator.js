@@ -6,45 +6,58 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-export async function generateFeaturedImage({
-  slug,
-  imagePrompt,
-  altText
-}) {
-  const imagesDir = path.join("blog", "images");
+if (!process.env.OPENAI_API_KEY) {
+  console.error("❌ OPENAI_API_KEY missing");
+  process.exit(1);
+}
 
-  if (!fs.existsSync(imagesDir)) {
-    fs.mkdirSync(imagesDir, { recursive: true });
+const IMAGE_DIR = "images";
+
+export async function generateImages({ title, slug }) {
+  if (!fs.existsSync(IMAGE_DIR)) {
+    fs.mkdirSync(IMAGE_DIR, { recursive: true });
   }
 
-  const imagePath = path.join(
-    imagesDir,
-    `${slug}-featured.png`
-  );
+  const basePrompt = `
+Premium lifestyle photography for a high-end pet brand.
 
-  console.log("Generating featured image with GPT-Image...");
+Subject:
+Dogs and/or cats in a real-life home environment.
 
-  const result = await openai.images.generate({
-    model: "gpt-image-1",
-    prompt: imagePrompt,
-    size: "1200x630"
-  });
+Style:
+- Clean, premium, professional
+- Soft natural lighting, warm tones
+- Minimal background, uncluttered
+- Realistic photography (not illustration, not cartoon)
+- No text, no logos, no overlays
 
-  const imageBase64 = result.data[0].b64_json;
-  const imageBuffer = Buffer.from(imageBase64, "base64");
+Mood:
+Warm, calm, trustworthy, modern
 
-  fs.writeFileSync(imagePath, imageBuffer);
+Context:
+Blog topic: "${title}"
+`;
 
-  console.log(`Image saved at ${imagePath}`);
+  const images = [
+    { type: "featured", filename: `${slug}-featured.jpg` },
+    { type: "thumbnail", filename: `${slug}-thumbnail.jpg` }
+  ];
 
-  return {
-    imagePath,
-    imageTag: `
-<img
-  src="/${imagePath}"
-  alt="${altText}"
-  loading="lazy"
-/>
-`.trim()
-  };
+  for (const img of images) {
+    console.log(`Generating ${img.type} image...`);
+
+    const result = await openai.images.generate({
+      model: "gpt-image-1",
+      prompt: basePrompt,
+      size: "2048x1080"
+    });
+
+    const imageBase64 = result.data[0].b64_json;
+    const buffer = Buffer.from(imageBase64, "base64");
+
+    const filePath = path.join(IMAGE_DIR, img.filename);
+    fs.writeFileSync(filePath, buffer);
+
+    console.log(`Saved image: ${filePath}`);
+  }
 }
