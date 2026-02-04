@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { generateTopic } from "./topicGenerator.js";
 
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
@@ -16,13 +17,32 @@ async function getNextRow() {
   const rows = res.data.values || [];
 
   for (let i = 0; i < rows.length; i++) {
-    const status = rows[i][4];
-    if (!status) {
+    if (!rows[i][4]) {
       return { row: rows[i], rowIndex: i + 2 };
     }
   }
 
   return null;
+}
+
+async function appendRow(topic) {
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: process.env.GOOGLE_SHEET_ID,
+    range: "blogs!A:F",
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [[
+        topic.date,
+        topic.title,
+        topic.primaryKeyword,
+        topic.slug,
+        "IN_PROGRESS",
+        topic.imageTheme
+      ]]
+    }
+  });
+
+  console.log("New topic appended and marked IN_PROGRESS");
 }
 
 async function markInProgress(rowIndex) {
@@ -39,16 +59,15 @@ async function markInProgress(rowIndex) {
 async function main() {
   const next = await getNextRow();
 
-  if (!next) {
-    console.log("No unpublished rows found");
+  if (next) {
+    console.log("Using existing row:", next.row);
+    await markInProgress(next.rowIndex);
     return;
   }
 
-  console.log("Selected row:", next.row);
-
-  await markInProgress(next.rowIndex);
-
-  console.log(`Row ${next.rowIndex} marked as IN_PROGRESS`);
+  console.log("No empty rows found. Generating new topic...");
+  const topic = await generateTopic();
+  await appendRow(topic);
 }
 
 main();
