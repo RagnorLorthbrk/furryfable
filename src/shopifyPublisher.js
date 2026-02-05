@@ -18,20 +18,11 @@ const shopify = axios.create({
   }
 });
 
-/**
- * Publish blog post to Shopify with FEATURED IMAGE
- */
-export async function publishToShopify({
-  title,
-  html,
-  slug,
-  imagePath
-}) {
-  // Convert image to base64 (THIS IS THE KEY FIX)
-  const absoluteImagePath = path.resolve(imagePath);
-  const imageBase64 = fs.readFileSync(absoluteImagePath, {
-    encoding: "base64"
-  });
+export async function publishToShopify({ title, html, slug, imagePath }) {
+  const imageBase64 = fs.readFileSync(
+    path.resolve(imagePath),
+    "base64"
+  );
 
   const payload = {
     article: {
@@ -46,13 +37,13 @@ export async function publishToShopify({
     }
   };
 
-  const response = await shopify.post("/articles.json", payload);
+  const res = await shopify.post("/articles.json", payload);
 
   return {
-    id: response.data.article.id,
+    id: res.data.article.id,
     adminUrl: `https://admin.shopify.com/store/${SHOPIFY_STORE_DOMAIN.replace(
       ".myshopify.com",
       ""
-    )}/content/articles/${response.data.article.id}`
+    )}/content/articles/${res.data.article.id}`
   };
 }
