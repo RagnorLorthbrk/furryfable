@@ -1,9 +1,8 @@
 export const BLOG_DIR = "blog";
 export const IMAGE_DIR = "images/blog";
 
-export const GEMINI_MODEL = "models/gemini-2.5-flash";
-
-export const IMAGE_SIZES = {
-  featured: "1536x1024",
-  thumb: "1024x1024"
+export const SHOPIFY = {
+  storeDomain: process.env.SHOPIFY_STORE_DOMAIN,
+  accessToken: process.env.SHOPIFY_ACCESS_TOKEN,
+  apiVersion: process.env.SHOPIFY_API_VERSION || "2026-01"
 };
