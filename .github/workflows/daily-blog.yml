@@ -3,7 +3,7 @@ name: FurryFable Blog Automation (Base)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "30 11 * * *" # 5:00 PM IST
+    - cron: "30 11 * * *" # runs daily at 5:00 PM IST
 
 jobs:
   run:
@@ -22,10 +22,22 @@ jobs:
         run: npm install
 
       - name: Run blog automation
+        run: node src/index.js
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
           SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
-        run: node src/index.js
+
+      - name: Commit and push generated files
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git commit -m "Add generated blog content and assets" || echo "Nothing to commit"
+          git push
