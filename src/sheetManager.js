@@ -1,51 +1,48 @@
 import { google } from "googleapis";
 
+if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+  throw new Error("❌ GOOGLE_SERVICE_ACCOUNT_JSON missing");
+}
+
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
   scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
 
 const sheets = google.sheets({ version: "v4", auth });
-
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
-const SHEET_NAME = "Sheet1";
+const RANGE = "Sheet1!A2:F";
 
-export async function getNextReadyRow() {
+export async function getNextBlogRow() {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A2:F`
+    range: RANGE
   });
 
   const rows = res.data.values || [];
 
   for (let i = 0; i < rows.length; i++) {
-    if (rows[i][4] === "READY") {
+    const [date, title, keyword, slug, status, imageTheme] = rows[i];
+    if (status === "READY") {
       return {
         rowIndex: i + 2,
-        title: rows[i][1],
-        keyword: rows[i][2],
-        slug: rows[i][3],
-        imageTheme: rows[i][5]
+        title,
+        slug,
+        imageTheme
       };
     }
   }
+
   return null;
 }
 
-export async function updateStatus(rowIndex, status, url = "") {
+export async function updateRowStatus(rowIndex, status) {
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!E${rowIndex}`,
+    range: `Sheet1!E${rowIndex}`,
     valueInputOption: "RAW",
-    requestBody: { values: [[status]] }
+    requestBody: {
+      values: [[status]]
+    }
   });
-
-  if (url) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!G${rowIndex}`,
-      valueInputOption: "RAW",
-      requestBody: { values: [[url]] }
-    });
-  }
 }
