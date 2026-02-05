@@ -1,51 +1,45 @@
+import axios from "axios";
 import fs from "fs";
 import path from "path";
-import OpenAI from "openai";
+import { BLOG_DIR, GEMINI_MODEL } from "./config.js";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-const IMAGE_DIR = "images/blog";
+export function slugify(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
 
-function ensureDir() {
-  if (!fs.existsSync(IMAGE_DIR)) {
-    fs.mkdirSync(IMAGE_DIR, { recursive: true });
+export async function generateBlogHTML(topic) {
+  const prompt = `
+You are a professional SEO content writer.
+
+Write a high-quality blog post about:
+"${topic}"
+
+Rules:
+- Let length be decided naturally by SEO best practices
+- Use proper H1, H2, H3 structure
+- Suggest internal links naturally (homepage, related blogs)
+- Sound human and authoritative
+- OUTPUT VALID HTML ONLY
+`;
+
+  const res = await axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      contents: [{ parts: [{ text: prompt }] }]
+    }
+  );
+
+  return res.data.candidates[0].content.parts[0].text;
+}
+
+export function saveBlogHTML(topic, html) {
+  if (!fs.existsSync(BLOG_DIR)) {
+    fs.mkdirSync(BLOG_DIR, { recursive: true });
   }
-}
 
-async function generateImage(prompt, filename, size) {
-  const result = await openai.images.generate({
-    model: "gpt-image-1",
-    prompt,
-    size
-  });
-
-  const image_base64 = result.data[0].b64_json;
-  const imageBuffer = Buffer.from(image_base64, "base64");
-
-  const filePath = path.join(IMAGE_DIR, filename);
-  fs.writeFileSync(filePath, imageBuffer);
-
-  console.log(`Saved image: ${filePath}`);
-}
-
-export async function generateBlogImages(topic, slug) {
-  ensureDir();
-
-  console.log("Generating featured image...");
-  await generateImage(
-    `High-quality professional blog featured image about ${topic}. 
-     Clean background, modern, premium, pet-focused, natural lighting.`,
-    `${slug}-featured.png`,
-    "1536x1024"
-  );
-
-  console.log("Generating thumbnail image...");
-  await generateImage(
-    `Minimal square thumbnail image representing ${topic}. 
-     Simple composition, bold subject, pet-related.`,
-    `${slug}-thumb.png`,
-    "1024x1024"
-  );
-}
+  const
