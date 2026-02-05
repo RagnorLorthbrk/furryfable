@@ -1,15 +1,10 @@
 import axios from "axios";
-import fs from "fs";
-import path from "path";
-import { BLOG_DIR, GEMINI_MODEL } from "./config.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const MODEL = "models/gemini-2.5-flash";
 
-export function slugify(text) {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+if (!GEMINI_API_KEY) {
+  throw new Error("GEMINI_API_KEY missing");
 }
 
 export async function generateBlogHTML(topic) {
@@ -20,31 +15,19 @@ Write a high-quality blog post about:
 "${topic}"
 
 Rules:
-- Let length be decided naturally by SEO best practices
-- Use proper H1, H2, H3 structure
-- Suggest internal links naturally (homepage, related blogs)
-- Sound human and authoritative
-- OUTPUT VALID HTML ONLY
+- Decide content length naturally (SEO best practice)
+- Use H1, H2, H3 properly
+- Clean human tone
+- Suggest internal links naturally
+- Output ONLY valid HTML
 `;
 
-  const res = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+  const response = await axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
     {
       contents: [{ parts: [{ text: prompt }] }]
     }
   );
 
-  return res.data.candidates[0].content.parts[0].text;
-}
-
-export function saveBlogHTML(topic, html) {
-  if (!fs.existsSync(BLOG_DIR)) {
-    fs.mkdirSync(BLOG_DIR, { recursive: true });
-  }
-
-  const slug = slugify(topic);
-  const filePath = path.join(BLOG_DIR, `blog-${slug}.html`);
-  fs.writeFileSync(filePath, html, "utf-8");
-
-  return { slug, filePath };
+  return response.data.candidates[0].content.parts[0].text;
 }
