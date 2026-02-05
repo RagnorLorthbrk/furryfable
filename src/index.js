@@ -1,54 +1,44 @@
+import { getNextBlogRow, updateRowStatus } from "./sheetManager.js";
+import { generateBlogHTML } from "./blogGenerator.js";
+import { generateImages } from "./imageGenerator.js";
+import { publishBlogToShopify } from "./shopifyPublisher.js";
 import fs from "fs";
 import path from "path";
 
-import { BLOG_DIR } from "./config.js";
-import { getNextReadyRow, updateStatus } from "./sheetManager.js";
-import { generateBlogHTML } from "./blogGenerator.js";
-import { generateImages } from "./imageGenerator.js";
-import { publishBlog } from "./shopifyPublisher.js";
-
 async function main() {
-  const row = await getNextReadyRow();
+  console.log("🚀 Blog automation started");
+
+  const row = await getNextBlogRow();
 
   if (!row) {
-    console.log("No READY rows found.");
+    console.log("✅ No READY rows found. Exiting.");
     return;
   }
 
-  const { rowIndex, title, keyword, slug, imageTheme } = row;
+  const { rowIndex, title, slug, imageTheme } = row;
 
-  await updateStatus(rowIndex, "IN_PROGRESS");
+  await updateRowStatus(rowIndex, "IN_PROGRESS");
 
-  console.log("Generating blog:", title);
+  console.log("✍️ Generating blog content:", title);
+  const html = await generateBlogHTML(title);
 
-  const html = await generateBlogHTML(title, keyword);
-
-  if (!fs.existsSync(BLOG_DIR)) {
-    fs.mkdirSync(BLOG_DIR, { recursive: true });
-  }
-
-  const blogPath = path.join(BLOG_DIR, `blog-${slug}.html`);
-  fs.writeFileSync(blogPath, html);
-
-  console.log("Generating images...");
+  console.log("🖼 Generating images (no text)...");
   const images = await generateImages(slug, imageTheme);
 
-  console.log("Publishing to Shopify...");
-  const article = await publishBlog({
+  console.log("🛒 Publishing to Shopify...");
+  const shopifyResult = await publishBlogToShopify({
     title,
     html,
     slug,
-    imagePath: images.featured
+    images
   });
 
-  const liveUrl = `https://www.furryfable.com/blogs/blog/${slug}`;
+  await updateRowStatus(rowIndex, "PUBLISHED");
 
-  await updateStatus(rowIndex, "PUBLISHED", liveUrl);
-
-  console.log("Published:", liveUrl);
+  console.log("🎉 Blog published:", shopifyResult.adminUrl);
 }
 
 main().catch(err => {
-  console.error("FATAL ERROR:", err.message);
+  console.error("❌ FATAL ERROR:", err);
   process.exit(1);
 });
