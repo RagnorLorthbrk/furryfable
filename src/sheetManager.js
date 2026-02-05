@@ -11,30 +11,23 @@ if (!SERVICE_ACCOUNT_JSON) {
   throw new Error("❌ GOOGLE_SERVICE_ACCOUNT_JSON missing");
 }
 
+const creds = JSON.parse(SERVICE_ACCOUNT_JSON);
+
 const auth = new google.auth.JWT({
-  email: JSON.parse(SERVICE_ACCOUNT_JSON).client_email,
-  key: JSON.parse(SERVICE_ACCOUNT_JSON).private_key,
+  email: creds.client_email,
+  key: creds.private_key,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
 
 const sheets = google.sheets({ version: "v4", auth });
 
-// ⚠️ SHEET NAME MUST MATCH EXACTLY
-const SHEET_NAME = "FurryFable Blog Automation";
-
-// Column mapping
-// A = Date
-// B = Title
-// C = Primary Keyword
-// D = Slug
-// E = Status
-// F = Image Theme
+const SHEET_NAME = "blogs";
 
 /**
- * Get first row where Status is empty
+ * Get next blog row where Status (column E) is empty
  */
 export async function getNextBlogRow() {
-  const range = `'${SHEET_NAME}'!A2:F`;
+  const range = `${SHEET_NAME}!A2:F`;
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
@@ -45,11 +38,13 @@ export async function getNextBlogRow() {
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const status = row[4]; // column E
+
+    const status = row[4]; // Column E
 
     if (!status || status.trim() === "") {
       return {
-        rowIndex: i + 2, // sheet rows start at 1, data starts at row 2
+        rowIndex: i + 2,
+        date: row[0],
         title: row[1],
         primaryKeyword: row[2],
         slug: row[3],
@@ -62,10 +57,10 @@ export async function getNextBlogRow() {
 }
 
 /**
- * Update status column (E)
+ * Update Status column
  */
 export async function updateStatus(rowIndex, status) {
-  const range = `'${SHEET_NAME}'!E${rowIndex}`;
+  const range = `${SHEET_NAME}!E${rowIndex}`;
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
