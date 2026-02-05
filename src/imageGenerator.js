@@ -12,27 +12,26 @@ export async function generateImages(slug, topic) {
     fs.mkdirSync(IMAGE_DIR, { recursive: true });
   }
 
-  const basePrompt = `
-Eco-friendly pet supplies illustration.
-Clean, modern, minimal, soft pastel colors.
-No text. No watermark. Professional blog style.
-`;
-
-  async function createImage(filename, size) {
-    const result = await openai.images.generate({
+  const generate = async (suffix, size) => {
+    const res = await openai.images.generate({
       model: "gpt-image-1",
-      prompt: `${topic}. ${basePrompt}`,
+      prompt: `Minimal, clean, blog illustration for: ${topic}`,
       size
     });
 
-    const buffer = Buffer.from(result.data[0].b64_json, "base64");
-    const filePath = path.join(IMAGE_DIR, filename);
+    const filePath = path.join(
+      IMAGE_DIR,
+      `${slug}-${suffix}.png`
+    );
+
+    const buffer = Buffer.from(res.data[0].b64_json, "base64");
     fs.writeFileSync(filePath, buffer);
-    return filePath;
-  }
 
-  const featured = await createImage(`${slug}-featured.png`, "1536x1024");
-  const thumb = await createImage(`${slug}-thumb.png`, "1024x1024");
+    return `/images/blog/${slug}-${suffix}.png`;
+  };
 
-  return { featured, thumb };
+  return {
+    featured: await generate("featured", "1536x1024"),
+    thumb: await generate("thumb", "1024x1024")
+  };
 }
