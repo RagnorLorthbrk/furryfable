@@ -1,79 +1,52 @@
 import fs from "fs";
 import path from "path";
-import axios from "axios";
-import { generateBlogImages } from "./imageGenerator.js";
+
+import { generateBlogHTML, saveBlogHTML } from "./blogGenerator.js";
+import { generateImages } from "./imageGenerator.js";
+import { BLOG_DIR } from "./config.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-if (!GEMINI_API_KEY) {
-  console.error("❌ GEMINI_API_KEY missing");
+if (!GEMINI_API_KEY || !OPENAI_API_KEY) {
+  console.error("❌ Missing API keys");
   process.exit(1);
-}
-
-console.log("Gemini key present:", !!GEMINI_API_KEY);
-
-// ------------------ CONFIG ------------------
-const BLOG_DIR = "blog";
-const MODEL = "models/gemini-2.5-flash";
-// --------------------------------------------
-
-function slugify(text) {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
-async function generateBlog(topic) {
-  const prompt = `
-You are a professional SEO content writer.
-
-Write a high-quality blog post about:
-"${topic}"
-
-Guidelines:
-- Let content length be decided naturally for best SEO
-- Use proper H1, H2, H3 structure
-- Suggest internal links naturally (do NOT insert URLs)
-- Write clean, human, non-AI sounding content
-- Output VALID HTML only (no markdown)
-`;
-
-  const response = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      contents: [
-        {
-          parts: [{ text: prompt }]
-        }
-      ]
-    }
-  );
-
-  return response.data.candidates[0].content.parts[0].text;
 }
 
 async function main() {
   const topic =
     "The Ultimate Guide to Eco-Friendly Pet Supplies for Sustainable Living";
 
-  const slug = slugify(topic);
-
   console.log("Generating blog content for:", topic);
 
-  const html = await generateBlog(topic);
+  const html = await generateBlogHTML(topic);
+  const { slug } = saveBlogHTML(topic, html);
 
-  if (!fs.existsSync(BLOG_DIR)) {
-    fs.mkdirSync(BLOG_DIR, { recursive: true });
-  }
+  console.log("Blog saved:", `blog-${slug}.html`);
 
-  const blogPath = path.join(BLOG_DIR, `blog-${slug}.html`);
-  fs.writeFileSync(blogPath, html, "utf-8");
+  console.log("Generating images...");
+  const images = await generateImages(slug, topic);
 
-  console.log("Blog saved:", blogPath);
+  console.log("Images saved:", images);
 
-  // ---- IMAGE GENERATION (Option B) ----
-  await generateBlogImages(topic, slug);
+  // 🔹 NEW: Metadata JSON
+  const metadata = {
+    title: topic,
+    slug,
+    excerpt:
+      "A practical guide to choosing sustainable, eco-friendly products for dogs and cats.",
+    category: "Sustainability",
+    tags: ["eco-friendly", "pet supplies", "sustainable living"],
+    featured_image: images.featured,
+    thumbnail_image: images.thumb,
+    status: "blog_generated",
+    source: "github-automation"
+  };
+
+  const jsonPath = path.join(BLOG_DIR, `blog-${slug}.json`);
+  fs.writeFileSync(jsonPath, JSON.stringify(metadata, null, 2), "utf-8");
+
+  console.log("Metadata JSON saved:", jsonPath);
 }
 
 main().catch(err => {
