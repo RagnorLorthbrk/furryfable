@@ -1,44 +1,54 @@
-import { getNextBlogRow, updateRowStatus } from "./sheetManager.js";
-import { generateBlogHTML } from "./blogGenerator.js";
+import { getNextBlogRow, updateStatus } from "./sheetManager.js";
+import { generateBlogHTML, saveBlogHTML } from "./blogGenerator.js";
 import { generateImages } from "./imageGenerator.js";
 import { publishBlogToShopify } from "./shopifyPublisher.js";
-import fs from "fs";
-import path from "path";
+
+console.log("🚀 Blog automation started");
 
 async function main() {
-  console.log("🚀 Blog automation started");
-
+  // 1️⃣ Get next row from Google Sheet
   const row = await getNextBlogRow();
 
   if (!row) {
-    console.log("✅ No READY rows found. Exiting.");
+    console.log("✅ No pending blogs found. Exiting.");
     return;
   }
 
-  const { rowIndex, title, slug, imageTheme } = row;
+  const { rowIndex, title, slug } = row;
 
-  await updateRowStatus(rowIndex, "IN_PROGRESS");
+  console.log(`✍️ Picked row ${rowIndex}: ${title}`);
 
-  console.log("✍️ Generating blog content:", title);
+  // 2️⃣ Mark IN_PROGRESS
+  await updateStatus(rowIndex, "IN_PROGRESS");
+
+  // 3️⃣ Generate blog HTML
+  console.log("📝 Generating blog content...");
   const html = await generateBlogHTML(title);
+  const { filePath } = saveBlogHTML(title, html);
 
-  console.log("🖼 Generating images (no text)...");
-  const images = await generateImages(slug, imageTheme);
+  console.log("📄 Blog saved:", filePath);
 
-  console.log("🛒 Publishing to Shopify...");
-  const shopifyResult = await publishBlogToShopify({
+  // 4️⃣ Generate images (no text on images)
+  console.log("🖼️ Generating images...");
+  const images = await generateImages(slug, title);
+
+  // 5️⃣ Publish to Shopify
+  console.log("🚀 Publishing to Shopify...");
+  const blogUrl = await publishBlogToShopify({
     title,
     html,
-    slug,
     images
   });
 
-  await updateRowStatus(rowIndex, "PUBLISHED");
+  console.log("🌍 Blog published:", blogUrl);
 
-  console.log("🎉 Blog published:", shopifyResult.adminUrl);
+  // 6️⃣ Update final status
+  await updateStatus(rowIndex, "PUBLISHED");
+
+  console.log("✅ Automation completed successfully");
 }
 
 main().catch(err => {
-  console.error("❌ FATAL ERROR:", err);
+  console.error("❌ FATAL ERROR:", err.message);
   process.exit(1);
 });
