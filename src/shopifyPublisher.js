@@ -1,5 +1,4 @@
 import axios from "axios";
-import fs from "fs";
 
 const {
   SHOPIFY_STORE_DOMAIN,
@@ -7,37 +6,48 @@ const {
   SHOPIFY_API_VERSION
 } = process.env;
 
-if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN) {
-  throw new Error("Missing Shopify credentials");
+if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN || !SHOPIFY_API_VERSION) {
+  throw new Error("❌ Missing Shopify credentials");
 }
 
-const client = axios.create({
-  baseURL: `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`,
-  headers: {
-    "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-    "Content-Type": "application/json"
-  }
-});
+const BASE_URL = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`;
 
-export async function publishBlog({
-  title,
-  html,
-  slug,
-  imagePath
-}) {
-  const imageData = fs.readFileSync(imagePath).toString("base64");
-
-  const res = await client.post("/articles.json", {
-    article: {
-      title,
-      body_html: html,
-      handle: slug,
-      published: true,
-      image: {
-        attachment: imageData
+export async function publishBlogToShopify({ title, html, slug, images }) {
+  const articleRes = await axios.post(
+    `${BASE_URL}/blogs.json`,
+    {
+      blog: { title: "Blog" }
+    },
+    {
+      headers: {
+        "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN
       }
     }
-  });
+  );
 
-  return res.data.article;
+  const blogId = articleRes.data.blog.id;
+
+  const res = await axios.post(
+    `${BASE_URL}/blogs/${blogId}/articles.json`,
+    {
+      article: {
+        title,
+        body_html: html,
+        handle: slug,
+        published: true
+      }
+    },
+    {
+      headers: {
+        "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN
+      }
+    }
+  );
+
+  return {
+    adminUrl: `https://admin.shopify.com/store/${SHOPIFY_STORE_DOMAIN.replace(
+      ".myshopify.com",
+      ""
+    )}/content/articles/${res.data.article.id}`
+  };
 }
