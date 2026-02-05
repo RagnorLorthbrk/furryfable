@@ -1,49 +1,55 @@
-import { getNextBlogRow, updateStatus } from "./sheetManager.js";
+import path from "path";
+
+import { getNextBlogRow, updateRowStatus } from "./sheetManager.js";
 import { generateBlogHTML, saveBlogHTML } from "./blogGenerator.js";
 import { generateImages } from "./imageGenerator.js";
-import { publishBlogToShopify } from "./shopifyPublisher.js";
-
-console.log("🚀 Blog automation started");
+import { publishToShopify } from "./shopifyPublisher.js";
 
 async function main() {
-  // 1️⃣ Get next row from Google Sheet
+  console.log("🚀 Blog automation started");
+
+  // 1. Get next row from Google Sheet
   const row = await getNextBlogRow();
 
   if (!row) {
-    console.log("✅ No pending blogs found. Exiting.");
+    console.log("✅ No pending rows found");
     return;
   }
 
-  const { rowIndex, title, slug } = row;
+  const {
+    rowIndex,
+    title,
+    slug
+  } = row;
 
   console.log(`✍️ Picked row ${rowIndex}: ${title}`);
 
-  // 2️⃣ Mark IN_PROGRESS
-  await updateStatus(rowIndex, "IN_PROGRESS");
+  await updateRowStatus(rowIndex, "IN_PROGRESS");
 
-  // 3️⃣ Generate blog HTML
+  // 2. Generate blog content
   console.log("📝 Generating blog content...");
   const html = await generateBlogHTML(title);
-  const { filePath } = saveBlogHTML(title, html);
 
+  const { filePath } = saveBlogHTML(title, html);
   console.log("📄 Blog saved:", filePath);
 
-  // 4️⃣ Generate images (no text on images)
+  // 3. Generate images (NO TEXT ON IMAGE)
   console.log("🖼️ Generating images...");
   const images = await generateImages(slug, title);
 
-  // 5️⃣ Publish to Shopify
+  // 4. Publish to Shopify (THIS IS WHERE MAGIC HAPPENS)
   console.log("🚀 Publishing to Shopify...");
-  const blogUrl = await publishBlogToShopify({
+  const result = await publishToShopify({
     title,
     html,
-    images
+    slug,
+    imagePath: images.featured
   });
 
-  console.log("🌍 Blog published:", blogUrl);
+  console.log("🌍 Blog published:", result);
 
-  // 6️⃣ Update final status
-  await updateStatus(rowIndex, "PUBLISHED");
+  // 5. Update sheet status
+  await updateRowStatus(rowIndex, "PUBLISHED");
 
   console.log("✅ Automation completed successfully");
 }
