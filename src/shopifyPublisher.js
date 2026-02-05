@@ -6,17 +6,16 @@ const SHOPIFY_STORE = process.env.SHOPIFY_STORE_DOMAIN;
 const SHOPIFY_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN;
 const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION || "2024-01";
 
+const BLOG_DIR = "blog";
+
 if (!SHOPIFY_STORE || !SHOPIFY_TOKEN) {
   console.error("❌ Missing Shopify credentials");
   process.exit(1);
 }
 
-const BLOG_DIR = "blog";
-const IMAGE_DIR = "images/blog";
+/* ---------------- HELPERS ---------------- */
 
-/* ------------------ HELPERS ------------------ */
-
-function getLatestBlogFiles() {
+function getLatestBlog() {
   const files = fs
     .readdirSync(BLOG_DIR)
     .filter(f => f.endsWith(".json"))
@@ -35,20 +34,25 @@ function getLatestBlogFiles() {
 
   return {
     slug,
-    htmlPath: path.join(BLOG_DIR, `blog-${slug}.html`),
-    jsonPath: path.join(BLOG_DIR, jsonFile)
+    html: fs.readFileSync(
+      path.join(BLOG_DIR, `blog-${slug}.html`),
+      "utf-8"
+    ),
+    meta: JSON.parse(
+      fs.readFileSync(path.join(BLOG_DIR, jsonFile), "utf-8")
+    )
   };
 }
 
-async function uploadImageToShopify(localPath) {
-  const imageData = fs.readFileSync(localPath, { encoding: "base64" });
+async function uploadImage(imagePath) {
+  const base64 = fs.readFileSync(imagePath, "base64");
 
   const res = await axios.post(
     `https://${SHOPIFY_STORE}/admin/api/${SHOPIFY_API_VERSION}/files.json`,
     {
       file: {
-        attachment: imageData,
-        filename: path.basename(localPath)
+        attachment: base64,
+        filename: path.basename(imagePath)
       }
     },
     {
@@ -62,46 +66,36 @@ async function uploadImageToShopify(localPath) {
   return res.data.file.url;
 }
 
-/* ------------------ MAIN ------------------ */
+/* ---------------- MAIN EXPORT ---------------- */
 
-async function publishBlogDraft() {
+export async function publishLatestBlog() {
   console.log("📦 Loading latest blog from GitHub...");
 
-  const { slug, htmlPath, jsonPath } = getLatestBlogFiles();
-
-  const html = fs.readFileSync(htmlPath, "utf-8");
-  const metadata = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
+  const { html, meta } = getLatestBlog();
 
   console.log("🖼 Uploading featured image...");
-  const featuredImagePath = metadata.featured_image;
-  const featuredImageUrl = await uploadImageToShopify(featuredImagePath);
+  const imageUrl = await uploadImage(meta.featured_image);
 
-  console.log("📝 Creating Shopify blog post (DRAFT)...");
+  console.log("📝 Creating Shopify draft...");
 
-  const res = await axios.post(
+  const blogsRes = await axios.get(
     `https://${SHOPIFY_STORE}/admin/api/${SHOPIFY_API_VERSION}/blogs.json`,
-    {},
     {
-      headers: {
-        "X-Shopify-Access-Token": SHOPIFY_TOKEN
-      }
+      headers: { "X-Shopify-Access-Token": SHOPIFY_TOKEN }
     }
   );
 
-  const blogId = res.data.blogs?.[0]?.id;
-  if (!blogId) throw new Error("No Shopify blog found");
+  const blogId = blogsRes.data.blogs[0].id;
 
   const articleRes = await axios.post(
     `https://${SHOPIFY_STORE}/admin/api/${SHOPIFY_API_VERSION}/blogs/${blogId}/articles.json`,
     {
       article: {
-        title: metadata.title,
+        title: meta.title,
         body_html: html,
-        summary_html: metadata.excerpt,
-        image: {
-          src: featuredImageUrl
-        },
-        tags: metadata.tags.join(", "),
+        summary_html: meta.excerpt,
+        image: { src: imageUrl },
+        tags: meta.tags.join(", "),
         published: false
       }
     },
@@ -118,10 +112,3 @@ async function publishBlogDraft() {
     articleRes.data.article.admin_graphql_api_id
   );
 }
-
-/* ------------------ RUN ------------------ */
-
-publishBlogDraft().catch(err => {
-  console.error("❌ Shopify publish failed:", err.response?.data || err.message);
-  process.exit(1);
-});
