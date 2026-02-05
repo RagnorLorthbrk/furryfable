@@ -1,94 +1,154 @@
-// src/seoSync.js
 import axios from "axios";
-import { getLatestPublishedRow, updateRowStatus } from "./sheetManager.js";
+import { google } from "googleapis";
 
+// ---------- ENV ----------
 const {
   SHOPIFY_STORE_DOMAIN,
-  SHOPIFY_ACCESS_TOKEN,
-  SHOPIFY_API_VERSION
+  SHOPIFY_ADMIN_TOKEN,
+  SHOPIFY_API_VERSION,
+  GOOGLE_SERVICE_ACCOUNT_JSON,
+  SPREADSHEET_ID
 } = process.env;
 
-if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN || !SHOPIFY_API_VERSION) {
-  throw new Error("❌ Missing Shopify credentials");
+if (
+  !SHOPIFY_STORE_DOMAIN ||
+  !SHOPIFY_ADMIN_TOKEN ||
+  !SHOPIFY_API_VERSION ||
+  !GOOGLE_SERVICE_ACCOUNT_JSON ||
+  !SPREADSHEET_ID
+) {
+  throw new Error("❌ Missing required environment variables");
 }
 
+// ---------- GOOGLE SHEETS ----------
+const auth = new google.auth.GoogleAuth({
+  credentials: JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON),
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+});
+
+const sheets = google.sheets({ version: "v4", auth });
+
+// ---------- SHOPIFY ----------
 const shopify = axios.create({
   baseURL: `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`,
   headers: {
-    "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+    "X-Shopify-Access-Token": SHOPIFY_ADMIN_TOKEN,
     "Content-Type": "application/json"
   }
 });
 
-export async function runSeoSync() {
-  console.log("🔎 SEO Sync started");
+// ---------- HELPERS ----------
+function buildSeoTitle(title) {
+  return title.length > 65 ? title.slice(0, 62) + "…" : title;
+}
 
-  const row = await getLatestPublishedRow();
+function buildMetaDescription(title) {
+  return `Learn ${title.toLowerCase()} with expert tips for dogs and cats. Practical, safe, and easy advice for pet parents.`;
+}
 
-  if (!row) {
-    console.log("ℹ️ No published blog pending SEO");
+function buildTags(title) {
+  const base = title.toLowerCase();
+  const tags = [
+    "pets",
+    "dogs",
+    "cats",
+    "pet care",
+    "furryfable",
+    ...base.split(" ").slice(0, 5)
+  ];
+  return [...new Set(tags)].join(", ");
+}
+
+function injectInternalLinks(html) {
+  const links = `
+<hr/>
+<h3>Helpful Resources</h3>
+<ul>
+  <li><a href="https://www.furryfable.com">FurryFable Home</a></li>
+  <li><a href="https://www.furryfable.com/blogs/blog">All Blog Articles</a></li>
+</ul>
+`;
+  return html.replace("</body>", `${links}</body>`);
+}
+
+// ---------- MAIN ----------
+async function seoSync() {
+  console.log("🔎 Finding latest PUBLISHED row from Sheet");
+
+  const sheet = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: "Sheet1!A2:F"
+  });
+
+  const rows = sheet.data.values || [];
+  const lastRowIndex = rows
+    .map((r, i) => ({ r, i }))
+    .reverse()
+    .find(row => row.r[5] === "PUBLISHED");
+
+  if (!lastRowIndex) {
+    console.log("⚠️ No published rows found");
     return;
   }
 
-  const {
-    rowIndex,
-    title,
-    primaryKeyword,
-    slug,
-    imageTheme,
-    shopifyArticleId
-  } = row;
+  const rowNumber = lastRowIndex.i + 2;
+  const articleId = lastRowIndex.r[4];
 
-  // ---- SEO VALUES ----
-  const seoTitle = title.slice(0, 70);
-  const metaDescription = `Learn ${primaryKeyword}. Practical, expert-backed guidance for pet parents at FurryFable.`;
+  console.log("🧩 Syncing SEO for article:", articleId);
 
-  const tags = [
-    primaryKeyword,
-    "pet care",
-    "dog care",
-    "cat care",
-    "furryfable"
-  ];
+  const articleRes = await shopify.get(
+    `/blogs/564038336686/articles/${articleId}.json`
+  );
 
-  // ---- FETCH ARTICLE ----
-  const articleRes = await shopify.get(`/articles/${shopifyArticleId}.json`);
-  let article = articleRes.data.article;
+  const article = articleRes.data.article;
 
-  // ---- IMAGE ALT TEXT ----
-  if (article.image) {
-    article.image.alt = `${title} – FurryFable pet care guide`;
-  }
+  const seoTitle = buildSeoTitle(article.title);
+  const metaDescription = buildMetaDescription(article.title);
+  const tags = buildTags(article.title);
 
-  // ---- INTERNAL LINKS ----
-  const internalLinksHtml = `
-    <hr>
-    <h3>Related Reading from FurryFable</h3>
-    <ul>
-      <li><a href="/blogs/blog">Browse all pet care articles</a></li>
-      <li><a href="/">Visit FurryFable Home</a></li>
-    </ul>
-  `;
+  const updatedHtml = injectInternalLinks(article.body_html);
 
-  if (!article.body_html.includes("Related Reading from FurryFable")) {
-    article.body_html += internalLinksHtml;
-  }
+  await shopify.put(
+    `/blogs/564038336686/articles/${articleId}.json`,
+    {
+      article: {
+        id: articleId,
+        title: article.title,
+        body_html: updatedHtml,
+        tags,
+        metafields: [
+          {
+            namespace: "global",
+            key: "title_tag",
+            value: seoTitle,
+            type: "single_line_text_field"
+          },
+          {
+            namespace: "global",
+            key: "description_tag",
+            value: metaDescription,
+            type: "single_line_text_field"
+          }
+        ]
+      }
+    }
+  );
 
-  // ---- UPDATE ARTICLE ----
-  await shopify.put(`/articles/${shopifyArticleId}.json`, {
-    article: {
-      id: shopifyArticleId,
-      tags: tags.join(", "),
-      seo: {
-        title: seoTitle,
-        description: metaDescription
-      },
-      image: article.image,
-      body_html: article.body_html
+  console.log("✅ Shopify SEO updated");
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `Sheet1!F${rowNumber}`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [["SEO_DONE"]]
     }
   });
 
-  await updateRowStatus(rowIndex, "SEO_DONE");
-
-  console.log("✅ SEO sync completed");
+  console.log("📊 Sheet updated → SEO_DONE");
 }
+
+seoSync().catch(err => {
+  console.error("❌ SEO SYNC FAILED:", err.message);
+  process.exit(1);
+});
