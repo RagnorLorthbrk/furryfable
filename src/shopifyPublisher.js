@@ -1,12 +1,7 @@
 import axios from "axios";
 import { SHOPIFY } from "./config.js";
 
-const {
-  storeDomain,
-  accessToken,
-  apiVersion,
-  blogHandle
-} = SHOPIFY;
+const { storeDomain, accessToken, apiVersion, blogHandle } = SHOPIFY;
 
 if (!storeDomain || !accessToken) {
   throw new Error("❌ Missing Shopify credentials");
@@ -22,6 +17,7 @@ const shopify = axios.create({
 
 async function getBlogId() {
   const res = await shopify.get("/blogs.json");
+
   const blog = res.data.blogs.find(b => b.handle === blogHandle);
 
   if (!blog) {
@@ -31,21 +27,31 @@ async function getBlogId() {
   return blog.id;
 }
 
-export async function publishBlog({ title, html, image }) {
+function sanitizeHTML(html) {
+  return html
+    .replace(/<!DOCTYPE[^>]*>/gi, "")
+    .replace(/<html[^>]*>/gi, "")
+    .replace(/<\/html>/gi, "")
+    .replace(/<body[^>]*>/gi, "")
+    .replace(/<\/body>/gi, "");
+}
+
+export async function publishBlog({ title, html }) {
   const blogId = await getBlogId();
+
+  const cleanHTML = sanitizeHTML(html);
+
+  const payload = {
+    article: {
+      title,
+      body_html: cleanHTML,
+      published: true
+    }
+  };
 
   const res = await shopify.post(
     `/blogs/${blogId}/articles.json`,
-    {
-      article: {
-        title,
-        body_html: html,
-        published: true,
-        image: image
-          ? { src: `https://www.furryfable.com${image}` }
-          : undefined
-      }
-    }
+    payload
   );
 
   return res.data.article.id;
