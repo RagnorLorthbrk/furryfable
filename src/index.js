@@ -30,7 +30,6 @@ async function main() {
 
   console.log("Images saved:", images);
 
-  // Metadata JSON
   const metadata = {
     title: topic,
     slug,
@@ -53,7 +52,6 @@ async function main() {
 
   console.log("Metadata JSON saved:", jsonPath);
 
-  // 🔥 PUBLISH TO SHOPIFY
   await publishLatestBlog();
 }
 
