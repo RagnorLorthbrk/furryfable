@@ -1,26 +1,29 @@
 import axios from "axios";
 
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = "models/gemini-2.5-flash";
 
-export async function generateBlogHTML(title, keyword) {
+export async function generateBlogHTML(title) {
   const prompt = `
-Write a long-form SEO blog in VALID HTML ONLY.
-
-Title: ${title}
-Primary keyword: ${keyword}
+Write a long-form, high-quality Shopify blog article.
 
 Rules:
-- No markdown
-- Use <h1>, <h2>, <p>, <ul>
-- Clean formatting
-- No emojis
+- VALID HTML ONLY
+- Use <h2>, <h3>, <p>, <ul>, <li>
+- NO markdown
+- NO emojis
+- Natural spacing between sections
+- SEO-friendly
+- Conversational, human tone
+- Do NOT mention AI
 - No inline styles
-- No weird spacing
-- Natural internal linking suggestions
+
+Topic:
+"${title}"
 `;
 
   const res = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
     {
       contents: [{ parts: [{ text: prompt }] }]
     }
