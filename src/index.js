@@ -8,15 +8,9 @@ import { BLOG_DIR } from "./config.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN;
 
 if (!GEMINI_API_KEY || !OPENAI_API_KEY) {
-  console.error("❌ Missing AI API keys");
-  process.exit(1);
-}
-
-if (!SHOPIFY_ADMIN_TOKEN) {
-  console.error("❌ Missing SHOPIFY_ADMIN_TOKEN");
+  console.error("❌ Missing API keys");
   process.exit(1);
 }
 
@@ -26,19 +20,16 @@ async function main() {
 
   console.log("Generating blog content for:", topic);
 
-  // 1️⃣ Generate blog HTML
   const html = await generateBlogHTML(topic);
   const { slug } = saveBlogHTML(topic, html);
 
   console.log("Blog saved:", `blog-${slug}.html`);
 
-  // 2️⃣ Generate images
   console.log("Generating images...");
   const images = await generateImages(slug, topic);
 
   console.log("Images saved:", images);
 
-  // 3️⃣ Save metadata JSON (for Shopify / future automation)
   const metadata = {
     title: topic,
     slug,
@@ -57,11 +48,8 @@ async function main() {
 
   console.log("Metadata JSON saved:", jsonPath);
 
-  // 4️⃣ Publish to Shopify as DRAFT
-  console.log("Publishing blog to Shopify (draft)...");
+  // 🔥 SHOPIFY STEP
   await publishLatestBlog();
-
-  console.log("✅ Full automation completed successfully");
 }
 
 main().catch(err => {
