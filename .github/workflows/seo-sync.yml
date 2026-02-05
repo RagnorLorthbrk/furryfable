@@ -1,4 +1,4 @@
-name: Shopify SEO Sync
+name: SEO Sync (Post Publish)
 
 on:
   workflow_run:
@@ -8,7 +8,6 @@ on:
 
 jobs:
   seo:
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
 
     steps:
@@ -20,14 +19,14 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install dependencies
+      - name: Install deps
         run: npm install
 
-      - name: Push SEO metadata to Shopify
-        run: node src/seoSync.js
+      - name: Run SEO Sync
         env:
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
-          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          SHOPIFY_ADMIN_TOKEN: ${{ secrets.SHOPIFY_ADMIN_TOKEN }}
           SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+        run: node src/seoSync.js
