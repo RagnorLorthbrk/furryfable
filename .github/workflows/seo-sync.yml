@@ -2,13 +2,15 @@ name: SEO Sync (Post Publish)
 
 on:
   workflow_run:
-    workflows: ["Daily Blog Automation"]
+    workflows: ["FurryFable Blog Automation (Base)"]
     types:
       - completed
 
 jobs:
-  seo:
+  seo-sync:
     runs-on: ubuntu-latest
+
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Checkout repo
@@ -19,14 +21,13 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install deps
+      - name: Install dependencies
         run: npm install
 
-      - name: Run SEO Sync
-        env:
-          SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
-          SHOPIFY_ADMIN_TOKEN: ${{ secrets.SHOPIFY_ADMIN_TOKEN }}
-          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+      - name: Run SEO sync
         run: node src/seoSync.js
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
+          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
