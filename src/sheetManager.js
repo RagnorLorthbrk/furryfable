@@ -1,34 +1,50 @@
 import { google } from "googleapis";
 
-if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+const SHEET_ID = process.env.GOOGLE_SHEET_ID;
+const SERVICE_ACCOUNT_JSON = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+
+// 🔴 THIS MUST MATCH YOUR TAB NAME EXACTLY
+const SHEET_NAME = "FurryFable Blog Automation";
+
+if (!SERVICE_ACCOUNT_JSON) {
   throw new Error("❌ GOOGLE_SERVICE_ACCOUNT_JSON missing");
 }
 
-const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-});
+if (!SHEET_ID) {
+  throw new Error("❌ GOOGLE_SHEET_ID missing");
+}
+
+const auth = new google.auth.JWT(
+  JSON.parse(SERVICE_ACCOUNT_JSON).client_email,
+  null,
+  JSON.parse(SERVICE_ACCOUNT_JSON).private_key,
+  ["https://www.googleapis.com/auth/spreadsheets"]
+);
 
 const sheets = google.sheets({ version: "v4", auth });
-const SHEET_ID = process.env.GOOGLE_SHEET_ID;
-const RANGE = "Sheet1!A2:F";
 
 export async function getNextBlogRow() {
+  const range = `${SHEET_NAME}!A2:F`;
+
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
-    range: RANGE
+    range
   });
 
   const rows = res.data.values || [];
 
   for (let i = 0; i < rows.length; i++) {
-    const [date, title, keyword, slug, status, imageTheme] = rows[i];
-    if (status === "READY") {
+    const row = rows[i];
+    const status = row[4]; // Column E = Status
+
+    if (!status || status === "NEW") {
       return {
         rowIndex: i + 2,
-        title,
-        slug,
-        imageTheme
+        date: row[0],
+        title: row[1],
+        keyword: row[2],
+        slug: row[3],
+        imageTheme: row[5]
       };
     }
   }
@@ -36,10 +52,12 @@ export async function getNextBlogRow() {
   return null;
 }
 
-export async function updateRowStatus(rowIndex, status) {
+export async function updateStatus(rowIndex, status) {
+  const range = `${SHEET_NAME}!E${rowIndex}`;
+
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
-    range: `Sheet1!E${rowIndex}`,
+    range,
     valueInputOption: "RAW",
     requestBody: {
       values: [[status]]
