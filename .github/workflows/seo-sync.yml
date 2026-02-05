@@ -1,18 +1,10 @@
-name: SEO Sync (Post Publish)
-
-on:
-  workflow_run:
-    workflows: ["FurryFable Blog Automation (Base)"]
-    types:
-      - completed
-
-  workflow_dispatch:
-
 jobs:
   seo-sync:
     runs-on: ubuntu-latest
 
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout repo
@@ -27,9 +19,9 @@ jobs:
         run: npm install
 
       - name: Run SEO sync
-        run: node src/seoSync.js
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
           SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
+        run: node src/seoSync.js
