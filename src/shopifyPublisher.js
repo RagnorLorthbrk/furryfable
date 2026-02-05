@@ -1,53 +1,58 @@
+import fs from "fs";
+import path from "path";
 import axios from "axios";
 
-const {
-  SHOPIFY_STORE_DOMAIN,
-  SHOPIFY_ACCESS_TOKEN,
-  SHOPIFY_API_VERSION
-} = process.env;
+const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
+const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+const SHOPIFY_API_VERSION = process.env.SHOPIFY_API_VERSION || "2026-01";
 
-if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN || !SHOPIFY_API_VERSION) {
+if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN) {
   throw new Error("❌ Missing Shopify credentials");
 }
 
-const BASE_URL = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`;
+const shopify = axios.create({
+  baseURL: `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`,
+  headers: {
+    "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+    "Content-Type": "application/json"
+  }
+});
 
-export async function publishBlogToShopify({ title, html, slug, images }) {
-  const articleRes = await axios.post(
-    `${BASE_URL}/blogs.json`,
-    {
-      blog: { title: "Blog" }
-    },
-    {
-      headers: {
-        "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN
+/**
+ * Publish blog post to Shopify with FEATURED IMAGE
+ */
+export async function publishToShopify({
+  title,
+  html,
+  slug,
+  imagePath
+}) {
+  // Convert image to base64 (THIS IS THE KEY FIX)
+  const absoluteImagePath = path.resolve(imagePath);
+  const imageBase64 = fs.readFileSync(absoluteImagePath, {
+    encoding: "base64"
+  });
+
+  const payload = {
+    article: {
+      title,
+      body_html: html,
+      handle: slug,
+      published: true,
+      image: {
+        attachment: imageBase64,
+        alt: title
       }
     }
-  );
+  };
 
-  const blogId = articleRes.data.blog.id;
-
-  const res = await axios.post(
-    `${BASE_URL}/blogs/${blogId}/articles.json`,
-    {
-      article: {
-        title,
-        body_html: html,
-        handle: slug,
-        published: true
-      }
-    },
-    {
-      headers: {
-        "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN
-      }
-    }
-  );
+  const response = await shopify.post("/articles.json", payload);
 
   return {
+    id: response.data.article.id,
     adminUrl: `https://admin.shopify.com/store/${SHOPIFY_STORE_DOMAIN.replace(
       ".myshopify.com",
       ""
-    )}/content/articles/${res.data.article.id}`
+    )}/content/articles/${response.data.article.id}`
   };
 }
