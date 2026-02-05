@@ -1,58 +1,43 @@
 import axios from "axios";
-import { SHOPIFY } from "./config.js";
+import fs from "fs";
 
-const { storeDomain, accessToken, apiVersion, blogHandle } = SHOPIFY;
+const {
+  SHOPIFY_STORE_DOMAIN,
+  SHOPIFY_ACCESS_TOKEN,
+  SHOPIFY_API_VERSION
+} = process.env;
 
-if (!storeDomain || !accessToken) {
-  throw new Error("❌ Missing Shopify credentials");
+if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN) {
+  throw new Error("Missing Shopify credentials");
 }
 
-const shopify = axios.create({
-  baseURL: `https://${storeDomain}/admin/api/${apiVersion}`,
+const client = axios.create({
+  baseURL: `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`,
   headers: {
-    "X-Shopify-Access-Token": accessToken,
+    "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
     "Content-Type": "application/json"
   }
 });
 
-async function getBlogId() {
-  const res = await shopify.get("/blogs.json");
+export async function publishBlog({
+  title,
+  html,
+  slug,
+  imagePath
+}) {
+  const imageData = fs.readFileSync(imagePath).toString("base64");
 
-  const blog = res.data.blogs.find(b => b.handle === blogHandle);
-
-  if (!blog) {
-    throw new Error(`❌ Blog with handle "${blogHandle}" not found`);
-  }
-
-  return blog.id;
-}
-
-function sanitizeHTML(html) {
-  return html
-    .replace(/<!DOCTYPE[^>]*>/gi, "")
-    .replace(/<html[^>]*>/gi, "")
-    .replace(/<\/html>/gi, "")
-    .replace(/<body[^>]*>/gi, "")
-    .replace(/<\/body>/gi, "");
-}
-
-export async function publishBlog({ title, html }) {
-  const blogId = await getBlogId();
-
-  const cleanHTML = sanitizeHTML(html);
-
-  const payload = {
+  const res = await client.post("/articles.json", {
     article: {
       title,
-      body_html: cleanHTML,
-      published: true
+      body_html: html,
+      handle: slug,
+      published: true,
+      image: {
+        attachment: imageData
+      }
     }
-  };
+  });
 
-  const res = await shopify.post(
-    `/blogs/${blogId}/articles.json`,
-    payload
-  );
-
-  return res.data.article.id;
+  return res.data.article;
 }
