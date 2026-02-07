@@ -14,7 +14,7 @@ const IMAGE_DIR = "images/blog";
 
 /**
  * Generate blog images (featured + thumbnail)
- * NO TEXT on image
+ * NO TEXT ON IMAGE
  */
 export async function generateBlogImages(title) {
   if (!fs.existsSync(IMAGE_DIR)) {
@@ -37,28 +37,26 @@ export async function generateBlogImages(title) {
 Photorealistic lifestyle image for a premium pet brand.
 
 Subject:
-Dogs or cats only (based on context of "${title}")
+Dogs or cats only (based on "${title}")
 
-Style rules:
+Rules:
 - NO text
 - NO typography
 - NO logos
-- Clean, modern, premium
 - Natural lighting
-- Soft background
-- Professional photography look
-- Square-safe composition
+- Clean background
+- Professional DSLR look
+- Cozy home or lifestyle setting
+- Premium aesthetic
 `;
 
   const res = await axios.post(
     `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
     {
-      contents: [
-        {
-          parts: [{ text: prompt }]
-        }
-      ]
-    ]
+      prompt: {
+        text: prompt
+      }
+    }
   );
 
   const imageBase64 =
