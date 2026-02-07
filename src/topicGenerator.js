@@ -4,63 +4,71 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = "models/gemini-2.5-flash";
 
 if (!GEMINI_API_KEY) {
-  throw new Error("❌ GEMINI_API_KEY missing in topicGenerator");
+  throw new Error("❌ GEMINI_API_KEY missing");
 }
 
 /**
- * Generate a NEW blog topic when sheet is empty
- * Focus: USA & Canada, Dogs & Cats, SEO-driven
+ * Always returns a VALID topic object
  */
 export async function generateNewTopic() {
   const prompt = `
-You are an SEO strategist for a premium pet products brand.
+You are an SEO strategist for a pet brand.
 
-Website: https://www.furryfable.com
-Target markets: USA & Canada
 Niche: Dogs and Cats only
+Target: USA & Canada
 
-Task:
-Generate ONE high-intent blog topic with strong organic ranking potential.
+Generate ONE blog topic.
+
+Respond in STRICT JSON only with this structure:
+
+{
+  "title": "SEO optimized blog title",
+  "primaryKeyword": "main keyword",
+  "imageTheme": "short realistic image description"
+}
 
 Rules:
-- Topic must solve a real pet owner problem
-- Informational or commercial-intent SEO topic
-- Avoid brand names
-- Avoid fluff or generic topics
-- Think SERP-first
-
-Respond ONLY in valid JSON.
-No markdown. No explanations.
-
-Format:
-{
-  "title": "string"
-}
+- title must be a full readable blog title
+- no markdown
+- no explanations
 `;
 
   const res = await axios.post(
     `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
     {
-      contents: [
-        {
-          parts: [{ text: prompt }]
-        }
-      ]
+      contents: [{ parts: [{ text: prompt }] }]
     }
   );
 
   const raw = res.data.candidates[0].content.parts[0].text;
 
-  let parsed;
+  let topic;
   try {
-    parsed = JSON.parse(raw);
-  } catch (e) {
-    throw new Error("❌ Failed to parse topic JSON from Gemini");
+    topic = JSON.parse(raw);
+  } catch {
+    throw new Error("❌ Gemini returned invalid JSON");
   }
 
-  if (!parsed.title) {
-    throw new Error("❌ Gemini did not return a title");
+  // 🔒 HARD VALIDATION (this prevents future crashes)
+  if (
+    !topic.title ||
+    typeof topic.title !== "string" ||
+    topic.title.length < 10
+  ) {
+    throw new Error("❌ Invalid topic.title generated");
   }
 
-  return parsed.title;
+  if (!topic.primaryKeyword) {
+    throw new Error("❌ Invalid primaryKeyword generated");
+  }
+
+  if (!topic.imageTheme) {
+    topic.imageTheme = "High quality lifestyle pet photo";
+  }
+
+  return {
+    title: topic.title.trim(),
+    primaryKeyword: topic.primaryKeyword.trim(),
+    imageTheme: topic.imageTheme.trim()
+  };
 }
