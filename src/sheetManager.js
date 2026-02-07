@@ -1,43 +1,42 @@
 import { google } from "googleapis";
 import slugify from "slugify";
 
-const SHEET_ID = process.env.GOOGLE_SHEET_ID;
-const SERVICE_ACCOUNT_JSON = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+const GOOGLE_SERVICE_ACCOUNT_JSON =
+  process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+const SHEET_NAME = "FurryFable Blog Automation";
 
-if (!SHEET_ID || !SERVICE_ACCOUNT_JSON) {
-  throw new Error("❌ Google Sheets credentials missing");
+if (!GOOGLE_SERVICE_ACCOUNT_JSON) {
+  throw new Error("❌ GOOGLE_SERVICE_ACCOUNT_JSON missing");
+}
+if (!SPREADSHEET_ID) {
+  throw new Error("❌ SPREADSHEET_ID missing");
 }
 
-const auth = new google.auth.JWT({
-  email: JSON.parse(SERVICE_ACCOUNT_JSON).client_email,
-  key: JSON.parse(SERVICE_ACCOUNT_JSON).private_key,
+const auth = new google.auth.GoogleAuth({
+  credentials: JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON),
   scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
 
 const sheets = google.sheets({ version: "v4", auth });
-const SHEET_NAME = "blogs";
 
 /**
- * Get next blog row with Status = PENDING or IN_PROGRESS
+ * Get next row with EMPTY or PENDING status
  */
 export async function getNextBlogRow() {
   const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A2:F`
+    spreadsheetId: SPREADSHEET_ID,
+    range: `'${SHEET_NAME}'!A2:F`
   });
 
   const rows = res.data.values || [];
 
   for (let i = 0; i < rows.length; i++) {
-    const [date, title, keyword, slug, status, imageTheme] = rows[i];
-
-    if (!status || status === "PENDING" || status === "IN_PROGRESS") {
+    const [title, status] = rows[i];
+    if (title && (!status || status === "PENDING")) {
       return {
         rowIndex: i + 2,
-        title,
-        primaryKeyword: keyword,
-        slug,
-        imageTheme
+        title
       };
     }
   }
@@ -46,30 +45,28 @@ export async function getNextBlogRow() {
 }
 
 /**
- * Add new AI-generated topic into sheet
+ * Add a newly generated topic to the sheet
  */
-export async function addNewTopicToSheet(topic) {
-  const slug = slugify(topic.title, { lower: true, strict: true });
+export async function addNewTopicToSheet(title) {
+  if (!title || typeof title !== "string") {
+    throw new Error("❌ addNewTopicToSheet received invalid title");
+  }
+
+  const safeSlug = slugify(title, {
+    lower: true,
+    strict: true
+  });
 
   await sheets.spreadsheets.values.append({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A:F`,
-    valueInputOption: "RAW",
+    spreadsheetId: SPREADSHEET_ID,
+    range: `'${SHEET_NAME}'!A:F`,
+    valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [
-        [
-          new Date().toISOString().split("T")[0],
-          topic.title,
-          topic.primaryKeyword,
-          slug,
-          "IN_PROGRESS",
-          topic.imageTheme
-        ]
-      ]
+      values: [[title, "PENDING", safeSlug]]
     }
   });
 
-  console.log("🆕 New topic added to sheet:", topic.title);
+  return title;
 }
 
 /**
@@ -77,9 +74,9 @@ export async function addNewTopicToSheet(topic) {
  */
 export async function updateRowStatus(rowIndex, status) {
   await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!E${rowIndex}`,
-    valueInputOption: "RAW",
+    spreadsheetId: SPREADSHEET_ID,
+    range: `'${SHEET_NAME}'!B${rowIndex}`,
+    valueInputOption: "USER_ENTERED",
     requestBody: {
       values: [[status]]
     }
