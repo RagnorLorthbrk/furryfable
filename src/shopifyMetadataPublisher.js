@@ -1,81 +1,63 @@
 import axios from "axios";
 
-const {
-  SHOPIFY_STORE_DOMAIN,
-  SHOPIFY_ACCESS_TOKEN,
-  SHOPIFY_API_VERSION
-} = process.env;
+export async function generateMetadata(blogContent) {
+  const apiKey = process.env.GEMINI_API_KEY;
 
-const api = axios.create({
-  baseURL: `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`,
-  headers: {
-    "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-    "Content-Type": "application/json"
-  }
-});
-
-// 1️⃣ Find article by handle
-async function getArticleByHandle(handle) {
-  const res = await api.get("/blogs.json?limit=250");
-  const blogs = res.data.blogs;
-
-  for (const blog of blogs) {
-    const articlesRes = await api.get(
-      `/blogs/${blog.id}/articles.json?limit=250`
-    );
-
-    const article = articlesRes.data.articles.find(
-      a => a.handle === handle
-    );
-
-    if (article) return article;
+  if (!apiKey) {
+    throw new Error("Missing GEMINI_API_KEY");
   }
 
-  return null;
+  const prompt = `
+You are an SEO expert for a premium pet brand.
+
+Generate:
+- excerpt (max 160 chars)
+- meta description (max 155 chars)
+- 5 SEO tags (lowercase)
+
+Return ONLY valid JSON:
+{
+  "excerpt": "...",
+  "metaDescription": "...",
+  "tags": ["tag1","tag2","tag3","tag4","tag5"]
 }
 
-// 2️⃣ Update article fields + SEO metafields
-export async function updateShopifyMetadata(handle, metadata) {
-  const article = await getArticleByHandle(handle);
+Blog content:
+"""
+${blogContent.slice(0, 7000)}
+"""
+`;
 
-  if (!article) {
-    throw new Error(`Shopify article not found for handle: ${handle}`);
+  const response = await axios.post(
+    "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-001:generateContent",
+    {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }]
+        }
+      ]
+    },
+    {
+      headers: {
+        "Content-Type": "application/json"
+      },
+      params: {
+        key: apiKey
+      }
+    }
+  );
+
+  const text =
+    response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!text) {
+    throw new Error("Empty response from Gemini");
   }
 
-  // ✅ Update excerpt + tags (ROOT FIELDS)
-  await api.put(
-    `/articles/${article.id}.json`,
-    {
-      article: {
-        id: article.id,
-        summary_html: metadata.excerpt,
-        tags: metadata.tags.join(", ")
-      }
-    }
-  );
-
-  // ✅ Update SEO metafields
-  await api.post(
-    `/articles/${article.id}/metafields.json`,
-    {
-      metafield: {
-        namespace: "global",
-        key: "description_tag",
-        value: metadata.metaDescription,
-        type: "single_line_text_field"
-      }
-    }
-  );
-
-  await api.post(
-    `/articles/${article.id}/metafields.json`,
-    {
-      metafield: {
-        namespace: "global",
-        key: "title_tag",
-        value: article.title,
-        type: "single_line_text_field"
-      }
-    }
-  );
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid JSON from Gemini:\n${text}`);
+  }
 }
