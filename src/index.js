@@ -1,59 +1,52 @@
 import { getNextBlogRow, addNewTopicToSheet, updateRowStatus } from "./sheetManager.js";
-import { generateBlogHTML, saveBlogHTML } from "./blogGenerator.js";
-import { generateBlogImages } from "./imageGenerator.js";
-import { publishToShopify } from "./shopifyPublisher.js";
 import { generateNewTopic } from "./topicGenerator.js";
+import { generateBlogHTML, saveBlogHTML } from "./blogGenerator.js";
+import { generateImages } from "./imageGenerator.js";
+import { publishToShopify } from "./shopifyPublisher.js";
 
 console.log("🚀 Blog automation started");
 
-let row = await getNextBlogRow();
-
-/**
- * 🔥 AUTO TOPIC DISCOVERY
- */
-if (!row) {
-  console.log("🔍 No pending blogs found. Researching new topic...");
-
-  const topic = await generateNewTopic();
-  await addNewTopicToSheet(topic);
-
-  row = await getNextBlogRow();
+async function main() {
+  let row = await getNextBlogRow();
+  let title;
+  let rowIndex;
 
   if (!row) {
-    throw new Error("❌ Failed to create new topic");
+    console.log("🔍 No pending blogs found. Researching new topic...");
+    title = await generateNewTopic();
+    await addNewTopicToSheet(title);
+
+    // Re-fetch after insert
+    row = await getNextBlogRow();
   }
-}
 
-console.log(`✍️ Picked row ${row.rowIndex}: ${row.title}`);
+  title = row.title;
+  rowIndex = row.rowIndex;
 
-try {
-  await updateRowStatus(row.rowIndex, "IN_PROGRESS");
+  console.log(`✍️ Picked row ${rowIndex}: ${title}`);
+  await updateRowStatus(rowIndex, "IN_PROGRESS");
 
   console.log("📝 Generating blog content...");
-  const html = await generateBlogHTML(row.title);
-  const { slug, filePath } = saveBlogHTML(row.title, html);
+  const html = await generateBlogHTML(title);
+  const { slug, filePath } = saveBlogHTML(title, html);
 
   console.log("🖼️ Generating images...");
-  const imagePath = await generateBlogImages({
-    title: row.title,
-    imageTheme: row.imageTheme,
-    slug
-  });
+  const images = await generateImages(slug, title);
 
   console.log("🚀 Publishing to Shopify...");
-  const result = await publishToShopify({
-    title: row.title,
+  await publishToShopify({
+    title,
     html,
     slug,
-    imagePath
+    imagePath: images.featured
   });
 
-  await updateRowStatus(row.rowIndex, "DONE");
+  await updateRowStatus(rowIndex, "PUBLISHED");
 
-  console.log("🌍 Blog published:", result.adminUrl);
   console.log("✅ Automation completed successfully");
-} catch (err) {
-  console.error("❌ FATAL ERROR:", err.message);
-  await updateRowStatus(row.rowIndex, "ERROR");
-  process.exit(1);
 }
+
+main().catch(err => {
+  console.error("❌ FATAL ERROR:", err.message);
+  process.exit(1);
+});
