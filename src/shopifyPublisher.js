@@ -26,9 +26,9 @@ export async function publishToShopify({ title, html, slug, imagePath }) {
 
   const payload = {
     article: {
-      title,
+      title: title,
       body_html: html,
-      author: "FurryFable Team"
+      author: "FurryFable Team",
       handle: slug,
       published: true,
       image: {
