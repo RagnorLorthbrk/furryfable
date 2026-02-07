@@ -4,16 +4,26 @@ import { generateMetadata } from "./metadataGenerator.js";
 
 console.log("Starting blog metadata automation…");
 
-// Locate latest blog file
+// 1. Locate blog directory
 const blogDir = path.resolve("blog");
 
+if (!fs.existsSync(blogDir)) {
+  console.log("Blog directory not found. Exiting safely.");
+  process.exit(0);
+}
+
+// 2. Find latest blog file by modified time
 const blogFiles = fs
   .readdirSync(blogDir)
-  .filter(f => f.endsWith(".md"))
-  .map(f => ({
-    file: f,
-    time: fs.statSync(path.join(blogDir, f)).mtime.getTime()
-  }))
+  .filter(file => file.endsWith(".md"))
+  .map(file => {
+    const fullPath = path.join(blogDir, file);
+    const stats = fs.statSync(fullPath);
+    return {
+      file,
+      time: stats.mtime.getTime()
+    };
+  })
   .sort((a, b) => b.time - a.time);
 
 if (blogFiles.length === 0) {
@@ -21,17 +31,20 @@ if (blogFiles.length === 0) {
   process.exit(0);
 }
 
-const blogPath = path.join("blog", blogFiles[0].file);
-console.log(`Using latest blog: ${blogPath}`);
+// 3. Use most recent blog
+const latestBlog = blogFiles[0].file;
+const blogPath = path.join(blogDir, latestBlog);
 
-// Read blog content
+console.log(`Using latest blog file: ${blogPath}`);
+
+// 4. Read blog content
 const blogContent = fs.readFileSync(blogPath, "utf-8");
 
-// Generate metadata
+// 5. Generate metadata via Gemini
 const metadata = await generateMetadata(blogContent);
 
 console.log("Generated metadata:");
 console.log(metadata);
 
-// STOP HERE FOR NOW
-console.log("Metadata generation complete. Shopify update next.");
+// STOP POINT — Shopify not wired yet
+console.log("Metadata generation completed successfully.");
