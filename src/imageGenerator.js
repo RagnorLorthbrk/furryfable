@@ -1,74 +1,74 @@
 import fs from "fs";
 import path from "path";
-import axios from "axios";
-import slugify from "slugify";
+import OpenAI from "openai";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = "models/gemini-2.5-flash-image-preview";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-if (!GEMINI_API_KEY) {
-  throw new Error("❌ GEMINI_API_KEY missing for image generation");
+if (!OPENAI_API_KEY) {
+  throw new Error("❌ OPENAI_API_KEY missing");
 }
+
+const openai = new OpenAI({
+  apiKey: OPENAI_API_KEY
+});
 
 const IMAGE_DIR = "images/blog";
 
 /**
- * Generate blog images (featured + thumbnail)
- * NO TEXT ON IMAGE
+ * Generate featured + thumbnail images for a blog
  */
-export async function generateBlogImages(title) {
+export async function generateImages(slug, title) {
   if (!fs.existsSync(IMAGE_DIR)) {
     fs.mkdirSync(IMAGE_DIR, { recursive: true });
   }
 
-  const slug = slugify(title, { lower: true, strict: true });
+  const prompt = `
+Photorealistic lifestyle image for a premium pet brand.
+Dogs and cats only.
+No text.
+No typography.
+No logos.
+Clean background.
+Natural lighting.
+High quality.
+`;
+
+  // FEATURED IMAGE
+  const featured = await openai.images.generate({
+    model: "gpt-image-1",
+    prompt,
+    size: "1536x1024"
+  });
 
   const featuredPath = path.join(
     IMAGE_DIR,
     `${slug}-featured.png`
   );
 
+  fs.writeFileSync(
+    featuredPath,
+    Buffer.from(featured.data[0].b64_json, "base64")
+  );
+
+  // THUMBNAIL IMAGE
+  const thumb = await openai.images.generate({
+    model: "gpt-image-1",
+    prompt,
+    size: "1024x1024"
+  });
+
   const thumbPath = path.join(
     IMAGE_DIR,
     `${slug}-thumb.png`
   );
 
-  const prompt = `
-Photorealistic lifestyle image for a premium pet brand.
-
-Subject:
-Dogs or cats only (based on "${title}")
-
-Rules:
-- NO text
-- NO typography
-- NO logos
-- Natural lighting
-- Clean background
-- Professional DSLR look
-- Cozy home or lifestyle setting
-- Premium aesthetic
-`;
-
-  const res = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      prompt: {
-        text: prompt
-      }
-    }
+  fs.writeFileSync(
+    thumbPath,
+    Buffer.from(thumb.data[0].b64_json, "base64")
   );
-
-  const imageBase64 =
-    res.data.candidates[0].content.parts[0].inlineData.data;
-
-  const buffer = Buffer.from(imageBase64, "base64");
-
-  fs.writeFileSync(featuredPath, buffer);
-  fs.writeFileSync(thumbPath, buffer);
 
   return {
     featured: featuredPath,
-    thumbnail: thumbPath
+    thumb: thumbPath
   };
 }
