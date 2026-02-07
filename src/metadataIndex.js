@@ -1,50 +1,71 @@
+import { google } from "googleapis";
 import fs from "fs";
 import path from "path";
 import { generateMetadata } from "./metadataGenerator.js";
+import { updateShopifyMetadata } from "./shopifyMetadataPublisher.js";
 
 console.log("Starting blog metadata automation…");
 
-// 1. Locate blog directory
-const blogDir = path.resolve("blog");
+// --- GOOGLE SHEETS SETUP ---
+const auth = new google.auth.GoogleAuth({
+  credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
+  scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+});
 
-if (!fs.existsSync(blogDir)) {
-  console.log("Blog directory not found. Exiting safely.");
+const sheets = google.sheets({ version: "v4", auth });
+const SHEET_ID = process.env.GOOGLE_SHEET_ID;
+const RANGE = "Sheet1!A:F"; // adjust if your sheet name differs
+
+// --- FETCH SHEET DATA ---
+const response = await sheets.spreadsheets.values.get({
+  spreadsheetId: SHEET_ID,
+  range: RANGE
+});
+
+const rows = response.data.values;
+const headers = rows[0];
+const dataRows = rows.slice(1);
+
+// Map column indexes
+const colIndex = header =>
+  headers.findIndex(h => h.toLowerCase() === header.toLowerCase());
+
+const statusCol = colIndex("Status");
+const slugCol = colIndex("Slug");
+
+if (statusCol === -1 || slugCol === -1) {
+  throw new Error("Required columns (Status, Slug) not found in sheet");
+}
+
+// --- FIND LATEST PUBLISHED BLOG ---
+const publishedRows = dataRows.filter(
+  r => r[statusCol] === "PUBLISHED" && r[slugCol]
+);
+
+if (publishedRows.length === 0) {
+  console.log("No published blogs found. Exiting safely.");
   process.exit(0);
 }
 
-// 2. Find latest blog file by modified time
-const blogFiles = fs
-  .readdirSync(blogDir)
-  .filter(file => file.endsWith(".md"))
-  .map(file => {
-    const fullPath = path.join(blogDir, file);
-    const stats = fs.statSync(fullPath);
-    return {
-      file,
-      time: stats.mtime.getTime()
-    };
-  })
-  .sort((a, b) => b.time - a.time);
+const latestRow = publishedRows[publishedRows.length - 1];
+const blogSlug = latestRow[slugCol];
 
-if (blogFiles.length === 0) {
-  console.log("No blog files found. Exiting safely.");
-  process.exit(0);
+console.log(`Target blog slug: ${blogSlug}`);
+
+// --- READ BLOG CONTENT FROM REPO ---
+const blogPath = path.join("blog", `blog-${blogSlug}.md`);
+
+if (!fs.existsSync(blogPath)) {
+  throw new Error(`Blog file not found: ${blogPath}`);
 }
 
-// 3. Use most recent blog
-const latestBlog = blogFiles[0].file;
-const blogPath = path.join(blogDir, latestBlog);
-
-console.log(`Using latest blog file: ${blogPath}`);
-
-// 4. Read blog content
 const blogContent = fs.readFileSync(blogPath, "utf-8");
 
-// 5. Generate metadata via Gemini
+// --- GENERATE METADATA ---
 const metadata = await generateMetadata(blogContent);
+console.log("Generated metadata:", metadata);
 
-console.log("Generated metadata:");
-console.log(metadata);
+// --- UPDATE SHOPIFY ---
+await updateShopifyMetadata(blogSlug, metadata);
 
-// STOP POINT — Shopify not wired yet
-console.log("Metadata generation completed successfully.");
+console.log("Shopify metadata update completed successfully.");
