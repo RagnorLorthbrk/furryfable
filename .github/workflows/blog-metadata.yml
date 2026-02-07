@@ -1,47 +1,65 @@
-name: FurryFable Blog Metadata Automation
+import axios from "axios";
 
-on:
-  workflow_run:
-    workflows:
-      - "FurryFable Blog Automation (Base)"
-    types:
-      - completed
+const {
+  SHOPIFY_STORE_DOMAIN,
+  SHOPIFY_ACCESS_TOKEN,
+  SHOPIFY_API_VERSION
+} = process.env;
 
-  workflow_dispatch:
+const api = axios.create({
+  baseURL: `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`,
+  headers: {
+    "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+    "Content-Type": "application/json"
+  }
+});
 
-jobs:
-  enrich-metadata:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+// ---------- FIND ARTICLE BY HANDLE ----------
+async function getArticleByHandle(handle) {
+  const blogsRes = await api.get("/blogs.json?limit=250");
+  const blogs = blogsRes.data.blogs;
 
-    runs-on: ubuntu-latest
+  for (const blog of blogs) {
+    const articlesRes = await api.get(
+      `/blogs/${blog.id}/articles.json?limit=250`
+    );
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+    const article = articlesRes.data.articles.find(
+      a => a.handle === handle
+    );
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
+    if (article) return article;
+  }
 
-      - name: Install dependencies
-        run: npm install
+  return null;
+}
 
-      - name: Run blog metadata automation
-        run: node src/metadataIndex.js
-        env:
-          # 🔴 THIS WAS MISSING
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+// ---------- MAIN EXPORT ----------
+export async function updateShopifyMetadata(handle, metadata) {
+  const article = await getArticleByHandle(handle);
 
-          # Shopify
-          SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
-          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
-          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
+  if (!article) {
+    throw new Error(`Shopify article not found for handle: ${handle}`);
+  }
 
-          # Gemini
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  // 1️⃣ Update excerpt + tags
+  await api.put(`/articles/${article.id}.json`, {
+    article: {
+      id: article.id,
+      summary_html: metadata.excerpt,
+      tags: metadata.tags.join(", ")
+    }
+  });
+
+  // 2️⃣ Update meta description
+  await api.post(`/articles/${article.id}/metafields.json`, {
+    metafield: {
+      namespace: "global",
+      key: "description_tag",
+      value: metadata.metaDescription,
+      type: "single_line_text_field"
+    }
+  });
+
+  console.log(`Updated Shopify metadata for: ${handle}`);
+}
