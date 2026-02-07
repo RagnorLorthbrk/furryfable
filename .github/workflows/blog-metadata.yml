@@ -1,26 +1,34 @@
 name: FurryFable Blog Metadata Automation
 
 on:
+  # Auto-trigger AFTER the base blog workflow completes
   workflow_run:
     workflows:
       - "FurryFable Blog Automation (Base)"
     types:
       - completed
 
+  # Manual trigger for testing/debugging
   workflow_dispatch:
 
 jobs:
   enrich-metadata:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # Run if:
+    # 1) Manually triggered
+    # 2) Base workflow finished successfully
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
@@ -28,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run blog metadata enrichment
+      - name: Run blog metadata automation
         run: node src/metadataIndex.js
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -36,4 +44,3 @@ jobs:
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
           SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
-
