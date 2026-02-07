@@ -1,68 +1,66 @@
 import axios from "axios";
-import slugify from "slugify";
 
-function extractJSON(text) {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) {
-    throw new Error("Gemini response did not contain JSON");
-  }
-  return JSON.parse(match[0]);
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const MODEL = "models/gemini-2.5-flash";
+
+if (!GEMINI_API_KEY) {
+  throw new Error("❌ GEMINI_API_KEY missing in topicGenerator");
 }
 
-export async function generateTopic() {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY missing at runtime");
-  }
-
+/**
+ * Generate a NEW blog topic when sheet is empty
+ * Focus: USA & Canada, Dogs & Cats, SEO-driven
+ */
+export async function generateNewTopic() {
   const prompt = `
 You are an SEO strategist for a premium pet products brand.
 
 Website: https://www.furryfable.com
-Audience: USA and Canada
-Niche: dogs and cats only
+Target markets: USA & Canada
+Niche: Dogs and Cats only
 
-Generate ONE blog topic with strong organic ranking potential.
+Task:
+Generate ONE high-intent blog topic with strong organic ranking potential.
 
-STRICT OUTPUT RULES:
-- Return ONLY valid JSON
-- No markdown
-- No explanations
-- No backticks
+Rules:
+- Topic must solve a real pet owner problem
+- Informational or commercial-intent SEO topic
+- Avoid brand names
+- Avoid fluff or generic topics
+- Think SERP-first
 
-JSON format:
+Respond ONLY in valid JSON.
+No markdown. No explanations.
+
+Format:
 {
-  "title": "string",
-  "primary_keyword": "string",
-  "image_theme": "string"
+  "title": "string"
 }
 `;
 
-  const response = await axios.post(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+  const res = await axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
     {
       contents: [
         {
-          role: "user",
           parts: [{ text: prompt }]
         }
       ]
     }
   );
 
-  const rawText =
-    response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const raw = res.data.candidates[0].content.parts[0].text;
 
-  if (!rawText) {
-    throw new Error("Empty response from Gemini");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new Error("❌ Failed to parse topic JSON from Gemini");
   }
 
-  const data = extractJSON(rawText);
+  if (!parsed.title) {
+    throw new Error("❌ Gemini did not return a title");
+  }
 
-  return {
-    date: new Date().toISOString().split("T")[0],
-    title: data.title.trim(),
-    primaryKeyword: data.primary_keyword.trim(),
-    slug: slugify(data.title, { lower: true, strict: true }),
-    imageTheme: data.image_theme.trim()
-  };
+  return parsed.title;
 }
