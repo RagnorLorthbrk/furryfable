@@ -1,41 +1,37 @@
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
 import { generateMetadata } from "./metadataGenerator.js";
 
 console.log("Starting blog metadata automation…");
 
-// Detect newly added blog
-const diff = execSync("git diff --name-only HEAD~1", { encoding: "utf-8" });
-const blogFiles = diff
-  .split("\n")
-  .filter(f => f.startsWith("blog/") && f.endsWith(".md"));
+// Locate latest blog file
+const blogDir = path.resolve("blog");
+
+const blogFiles = fs
+  .readdirSync(blogDir)
+  .filter(f => f.endsWith(".md"))
+  .map(f => ({
+    file: f,
+    time: fs.statSync(path.join(blogDir, f)).mtime.getTime()
+  }))
+  .sort((a, b) => b.time - a.time);
 
 if (blogFiles.length === 0) {
-  console.log("No new blog detected. Exiting safely.");
+  console.log("No blog files found. Exiting safely.");
   process.exit(0);
 }
 
-if (blogFiles.length > 1) {
-  console.error("Multiple blogs detected. Aborting for safety.");
-  process.exit(1);
-}
-
-const blogPath = blogFiles[0];
-console.log(`Detected blog: ${blogPath}`);
+const blogPath = path.join("blog", blogFiles[0].file);
+console.log(`Using latest blog: ${blogPath}`);
 
 // Read blog content
-const blogContent = fs.readFileSync(
-  path.resolve(blogPath),
-  "utf-8"
-);
+const blogContent = fs.readFileSync(blogPath, "utf-8");
 
-// Generate metadata via Gemini
+// Generate metadata
 const metadata = await generateMetadata(blogContent);
 
 console.log("Generated metadata:");
 console.log(metadata);
 
-// TEMP STOP POINT
-// We are NOT touching Shopify yet
-console.log("Metadata generation complete. Shopify step coming next.");
+// STOP HERE FOR NOW
+console.log("Metadata generation complete. Shopify update next.");
