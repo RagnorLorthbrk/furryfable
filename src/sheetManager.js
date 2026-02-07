@@ -20,7 +20,7 @@ const auth = new google.auth.JWT({
 });
 
 const sheets = google.sheets({ version: "v4", auth });
-const SHEET_NAME = "Sheet1";
+const SHEET_NAME = "blogs";
 
 /**
  * Get next empty row (Status empty)
