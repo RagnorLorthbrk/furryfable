@@ -1,34 +1,48 @@
 import axios from "axios";
 
 export async function generateMetadata(blogContent) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Missing GEMINI_API_KEY");
+  }
+
   const prompt = `
 You are an SEO expert for a premium pet brand.
 
-From the blog content below, generate STRICT JSON with:
-- excerpt: max 280 characters
-- metaDescription: max 160 characters
-- tags: 5–8 short, SEO-friendly tags (lowercase, no emojis)
+From the blog content below, generate:
+1. A short excerpt (max 160 characters)
+2. A meta description (max 155 characters)
+3. 5 SEO-friendly tags (lowercase, comma separated)
 
-Rules:
-- Do NOT include markdown
-- Do NOT include explanations
-- Output JSON only
-- Make it sound human, expert, and trustworthy
+Respond ONLY in valid JSON with this structure:
+{
+  "excerpt": "...",
+  "metaDescription": "...",
+  "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"]
+}
 
 Blog content:
 """
-${blogContent}
+${blogContent.slice(0, 8000)}
 """
 `;
 
   const response = await axios.post(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`,
     {
-      contents: [{ parts: [{ text: prompt }] }]
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }]
+        }
+      ]
     },
     {
-      params: { key: process.env.GEMINI_API_KEY },
-      headers: { "Content-Type": "application/json" }
+      headers: {
+        "Content-Type": "application/json"
+      },
+      params: {
+        key: process.env.GEMINI_API_KEY
+      }
     }
   );
 
@@ -36,19 +50,12 @@ ${blogContent}
     response.data.candidates?.[0]?.content?.parts?.[0]?.text;
 
   if (!text) {
-    throw new Error("Gemini returned empty response");
+    throw new Error("Empty response from Gemini");
   }
 
-  let parsed;
   try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    throw new Error("Gemini response was not valid JSON");
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid JSON from Gemini:\n${text}`);
   }
-
-  return {
-    excerpt: parsed.excerpt?.slice(0, 280) || "",
-    metaDescription: parsed.metaDescription?.slice(0, 160) || "",
-    tags: Array.isArray(parsed.tags) ? parsed.tags.slice(0, 8) : []
-  };
 }
