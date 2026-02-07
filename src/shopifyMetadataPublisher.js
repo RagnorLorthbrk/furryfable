@@ -7,10 +7,14 @@ export async function updateShopifyMetadata(slug, metadata) {
     SHOPIFY_API_VERSION
   } = process.env;
 
+  if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_ACCESS_TOKEN || !SHOPIFY_API_VERSION) {
+    throw new Error("Missing Shopify environment variables");
+  }
+
   const baseUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`;
 
-  // Find article by handle
-  const res = await axios.get(
+  // 1. Find article by handle
+  const articleRes = await axios.get(
     `${baseUrl}/articles.json?handle=${slug}`,
     {
       headers: {
@@ -19,12 +23,13 @@ export async function updateShopifyMetadata(slug, metadata) {
     }
   );
 
-  const article = res.data.articles?.[0];
+  const article = articleRes.data?.articles?.[0];
+
   if (!article) {
     throw new Error(`Shopify article not found for slug: ${slug}`);
   }
 
-  // PATCH metadata only
+  // 2. Update metadata only
   await axios.put(
     `${baseUrl}/articles/${article.id}.json`,
     {
@@ -45,4 +50,8 @@ export async function updateShopifyMetadata(slug, metadata) {
     {
       headers: {
         "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-        "Content-Type":
+        "Content-Type": "application/json"
+      }
+    }
+  );
+}
