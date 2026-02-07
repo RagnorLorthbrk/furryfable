@@ -1,10 +1,11 @@
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import { generateMetadata } from "./metadataGenerator.js";
 
 console.log("Starting blog metadata automation…");
 
-// 1. Detect newly added blog file
+// Detect newly added blog
 const diff = execSync("git diff --name-only HEAD~1", { encoding: "utf-8" });
 const blogFiles = diff
   .split("\n")
@@ -16,17 +17,25 @@ if (blogFiles.length === 0) {
 }
 
 if (blogFiles.length > 1) {
-  console.error("More than one new blog detected. Aborting for safety.");
+  console.error("Multiple blogs detected. Aborting for safety.");
   process.exit(1);
 }
 
 const blogPath = blogFiles[0];
-console.log(`Detected new blog: ${blogPath}`);
+console.log(`Detected blog: ${blogPath}`);
 
-// 2. Read blog content
-const blogContent = fs.readFileSync(path.resolve(blogPath), "utf-8");
+// Read blog content
+const blogContent = fs.readFileSync(
+  path.resolve(blogPath),
+  "utf-8"
+);
 
-// TEMP: just log size so we know pipeline works
-console.log(`Blog content length: ${blogContent.length} chars`);
+// Generate metadata via Gemini
+const metadata = await generateMetadata(blogContent);
 
-console.log("Metadata workflow completed (stub mode).");
+console.log("Generated metadata:");
+console.log(metadata);
+
+// TEMP STOP POINT
+// We are NOT touching Shopify yet
+console.log("Metadata generation complete. Shopify step coming next.");
