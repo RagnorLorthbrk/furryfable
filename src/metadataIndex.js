@@ -1,71 +1,96 @@
-import { google } from "googleapis";
 import fs from "fs";
 import path from "path";
+import { google } from "googleapis";
 import { generateMetadata } from "./metadataGenerator.js";
 import { updateShopifyMetadata } from "./shopifyMetadataPublisher.js";
 
 console.log("Starting blog metadata automation…");
 
-// --- GOOGLE SHEETS SETUP ---
+// ---------- GOOGLE SHEETS ----------
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 });
 
 const sheets = google.sheets({ version: "v4", auth });
+
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const RANGE = "Sheet1!A:F"; // adjust if your sheet name differs
 
-// --- FETCH SHEET DATA ---
-const response = await sheets.spreadsheets.values.get({
+const res = await sheets.spreadsheets.values.get({
   spreadsheetId: SHEET_ID,
   range: RANGE
 });
 
-const rows = response.data.values;
+const rows = res.data.values;
+if (!rows || rows.length < 2) {
+  console.log("Sheet is empty. Exiting safely.");
+  process.exit(0);
+}
+
 const headers = rows[0];
 const dataRows = rows.slice(1);
 
-// Map column indexes
-const colIndex = header =>
-  headers.findIndex(h => h.toLowerCase() === header.toLowerCase());
+const col = name =>
+  headers.findIndex(h => h.trim().toLowerCase() === name.toLowerCase());
 
-const statusCol = colIndex("Status");
-const slugCol = colIndex("Slug");
+const dateCol = col("Date");
+const statusCol = col("Status");
+const slugCol = col("Slug");
 
-if (statusCol === -1 || slugCol === -1) {
-  throw new Error("Required columns (Status, Slug) not found in sheet");
+if (dateCol === -1 || statusCol === -1 || slugCol === -1) {
+  throw new Error("Required columns (Date, Status, Slug) not found");
 }
 
-// --- FIND LATEST PUBLISHED BLOG ---
-const publishedRows = dataRows.filter(
-  r => r[statusCol] === "PUBLISHED" && r[slugCol]
+// ---------- FILTER PUBLISHED ----------
+const published = dataRows.filter(
+  r => r[statusCol] === "PUBLISHED" && r[dateCol] && r[slugCol]
 );
 
-if (publishedRows.length === 0) {
+if (published.length === 0) {
   console.log("No published blogs found. Exiting safely.");
   process.exit(0);
 }
 
-const latestRow = publishedRows[publishedRows.length - 1];
-const blogSlug = latestRow[slugCol];
+// ---------- FIND LATEST DATE ----------
+const latestDate = published
+  .map(r => r[dateCol])
+  .sort()
+  .reverse()[0];
 
-console.log(`Target blog slug: ${blogSlug}`);
+console.log(`Latest published date: ${latestDate}`);
 
-// --- READ BLOG CONTENT FROM REPO ---
-const blogPath = path.join("blog", `blog-${blogSlug}.md`);
+// ---------- ALL BLOGS ON LATEST DATE ----------
+const targets = published.filter(r => r[dateCol] === latestDate);
 
-if (!fs.existsSync(blogPath)) {
-  throw new Error(`Blog file not found: ${blogPath}`);
+console.log(`Blogs to process: ${targets.length}`);
+
+// ---------- PROCESS EACH BLOG ----------
+for (const row of targets) {
+  const slug = row[slugCol];
+  const blogPath = path.join("blog", `blog-${slug}.md`);
+
+  console.log(`\nProcessing blog: ${slug}`);
+
+  if (!fs.existsSync(blogPath)) {
+    console.warn(`Blog file not found: ${blogPath}. Skipping.`);
+    continue;
+  }
+
+  try {
+    const blogContent = fs.readFileSync(blogPath, "utf-8");
+
+    const metadata = await generateMetadata(blogContent);
+
+    console.log("Generated metadata:", metadata);
+
+    await updateShopifyMetadata(slug, metadata);
+
+    console.log(`Shopify metadata updated for: ${slug}`);
+  } catch (err) {
+    console.error(`Failed for blog ${slug}:`, err.message);
+    // continue with next blog
+  }
 }
 
-const blogContent = fs.readFileSync(blogPath, "utf-8");
-
-// --- GENERATE METADATA ---
-const metadata = await generateMetadata(blogContent);
-console.log("Generated metadata:", metadata);
-
-// --- UPDATE SHOPIFY ---
-await updateShopifyMetadata(blogSlug, metadata);
-
-console.log("Shopify metadata update completed successfully.");
+console.log("\nMetadata automation completed.");
