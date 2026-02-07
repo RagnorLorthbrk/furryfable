@@ -1,4 +1,8 @@
+import fs from "fs";
+import path from "path";
 import axios from "axios";
+import slugify from "slugify";
+import { BLOG_DIR } from "./config.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = "models/gemini-2.5-flash";
@@ -8,29 +12,43 @@ if (!GEMINI_API_KEY) {
 }
 
 /**
- * Always returns a VALID topic object
+ * Collect all existing slugs from /blog folder
  */
-export async function generateNewTopic() {
-  const prompt = `
-You are an SEO strategist for a pet brand.
+function getExistingBlogSlugs() {
+  if (!fs.existsSync(BLOG_DIR)) return [];
 
+  return fs
+    .readdirSync(BLOG_DIR)
+    .filter(f => f.startsWith("blog-") && f.endsWith(".html"))
+    .map(f => f.replace("blog-", "").replace(".html", ""));
+}
+
+/**
+ * Generate a single SEO topic from Gemini
+ */
+async function generateRawTopic() {
+  const prompt = `
+You are an SEO strategist for a premium pet brand.
+
+Website: https://www.furryfable.com
 Niche: Dogs and Cats only
 Target: USA & Canada
 
-Generate ONE blog topic.
+Generate ONE unique blog topic.
 
-Respond in STRICT JSON only with this structure:
+Respond ONLY in strict JSON:
 
 {
   "title": "SEO optimized blog title",
   "primaryKeyword": "main keyword",
-  "imageTheme": "short realistic image description"
+  "imageTheme": "realistic lifestyle pet photo description"
 }
 
 Rules:
-- title must be a full readable blog title
-- no markdown
-- no explanations
+- No markdown
+- No explanation
+- No arrays
+- Title must be human and blog-ready
 `;
 
   const res = await axios.post(
@@ -49,26 +67,49 @@ Rules:
     throw new Error("❌ Gemini returned invalid JSON");
   }
 
-  // 🔒 HARD VALIDATION (this prevents future crashes)
-  if (
-    !topic.title ||
-    typeof topic.title !== "string" ||
-    topic.title.length < 10
-  ) {
-    throw new Error("❌ Invalid topic.title generated");
-  }
-
-  if (!topic.primaryKeyword) {
-    throw new Error("❌ Invalid primaryKeyword generated");
-  }
-
-  if (!topic.imageTheme) {
-    topic.imageTheme = "High quality lifestyle pet photo";
+  if (!topic.title || typeof topic.title !== "string") {
+    throw new Error("❌ Invalid topic.title");
   }
 
   return {
     title: topic.title.trim(),
-    primaryKeyword: topic.primaryKeyword.trim(),
-    imageTheme: topic.imageTheme.trim()
+    primaryKeyword: (topic.primaryKeyword || "").trim(),
+    imageTheme: (topic.imageTheme || "Premium pet lifestyle image").trim()
   };
+}
+
+/**
+ * PUBLIC: Generate a UNIQUE topic (no duplicates)
+ */
+export async function generateNewTopic(existingSheetTitles = []) {
+  const existingSlugs = new Set([
+    ...getExistingBlogSlugs(),
+    ...existingSheetTitles.map(t =>
+      slugify(t, { lower: true, strict: true })
+    )
+  ]);
+
+  const MAX_ATTEMPTS = 5;
+
+  for (let i = 1; i <= MAX_ATTEMPTS; i++) {
+    console.log(`🔁 Topic attempt ${i}...`);
+
+    const topic = await generateRawTopic();
+    const slug = slugify(topic.title, {
+      lower: true,
+      strict: true
+    });
+
+    if (!existingSlugs.has(slug)) {
+      console.log("✅ Unique topic approved:", topic.title);
+      return {
+        ...topic,
+        slug
+      };
+    }
+
+    console.warn("⚠️ Duplicate detected, regenerating:", topic.title);
+  }
+
+  throw new Error("❌ Unable to generate a unique blog topic after 5 attempts");
 }
