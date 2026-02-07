@@ -1,52 +1,81 @@
 import axios from "axios";
 
-export async function updateShopifyMetadata(slug, metadata) {
-  const {
-    SHOPIFY_STORE_DOMAIN,
-    SHOPIFY_ACCESS_TOKEN,
-    SHOPIFY_API_VERSION
-  } = process.env;
+const {
+  SHOPIFY_STORE_DOMAIN,
+  SHOPIFY_ACCESS_TOKEN,
+  SHOPIFY_API_VERSION
+} = process.env;
 
-  const baseUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`;
+const api = axios.create({
+  baseURL: `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`,
+  headers: {
+    "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
+    "Content-Type": "application/json"
+  }
+});
 
-  // 1. Get all articles
-  const res = await axios.get(`${baseUrl}/articles.json?limit=250`, {
-    headers: {
-      "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN
-    }
-  });
+// 1️⃣ Find article by handle
+async function getArticleByHandle(handle) {
+  const res = await api.get("/blogs.json?limit=250");
+  const blogs = res.data.blogs;
 
-  const article = res.data.articles.find(a => a.handle === slug);
-  if (!article) {
-    console.warn(`Shopify article not found for slug: ${slug}`);
-    return;
+  for (const blog of blogs) {
+    const articlesRes = await api.get(
+      `/blogs/${blog.id}/articles.json?limit=250`
+    );
+
+    const article = articlesRes.data.articles.find(
+      a => a.handle === handle
+    );
+
+    if (article) return article;
   }
 
-  // 2. Update correct fields
-  await axios.put(
-    `${baseUrl}/articles/${article.id}.json`,
+  return null;
+}
+
+// 2️⃣ Update article fields + SEO metafields
+export async function updateShopifyMetadata(handle, metadata) {
+  const article = await getArticleByHandle(handle);
+
+  if (!article) {
+    throw new Error(`Shopify article not found for handle: ${handle}`);
+  }
+
+  // ✅ Update excerpt + tags (ROOT FIELDS)
+  await api.put(
+    `/articles/${article.id}.json`,
     {
       article: {
         id: article.id,
-        excerpt_html: metadata.excerpt,
-        tags: metadata.tags.join(", "),
-        metafields: [
-          {
-            namespace: "global",
-            key: "description_tag",
-            type: "single_line_text_field",
-            value: metadata.metaDescription
-          }
-        ]
-      }
-    },
-    {
-      headers: {
-        "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-        "Content-Type": "application/json"
+        summary_html: metadata.excerpt,
+        tags: metadata.tags.join(", ")
       }
     }
   );
 
-  console.log(`Updated Shopify metadata for: ${slug}`);
+  // ✅ Update SEO metafields
+  await api.post(
+    `/articles/${article.id}/metafields.json`,
+    {
+      metafield: {
+        namespace: "global",
+        key: "description_tag",
+        value: metadata.metaDescription,
+        type: "single_line_text_field"
+      }
+    }
+  );
+
+  await api.post(
+    `/articles/${article.id}/metafields.json`,
+    {
+      metafield: {
+        namespace: "global",
+        key: "title_tag",
+        value: article.title,
+        type: "single_line_text_field"
+      }
+    }
+  );
 }
