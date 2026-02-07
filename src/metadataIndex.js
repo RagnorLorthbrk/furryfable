@@ -6,7 +6,14 @@ import { updateShopifyMetadata } from "./shopifyMetadataPublisher.js";
 
 console.log("Starting blog metadata automation…");
 
-// ---------- GOOGLE SHEETS ----------
+// ---------- GOOGLE SHEETS AUTH ----------
+if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+  throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_JSON");
+}
+if (!process.env.GOOGLE_SHEET_ID) {
+  throw new Error("Missing GOOGLE_SHEET_ID");
+}
+
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"]
@@ -14,23 +21,27 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: "v4", auth });
 
+// ---------- SHEET CONFIG ----------
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
-const RANGE = "Sheet1!A:F"; // adjust if your sheet name differs
+const RANGE = "blogs!A:F"; // ✅ confirmed tab name
 
+// ---------- FETCH SHEET DATA ----------
 const res = await sheets.spreadsheets.values.get({
   spreadsheetId: SHEET_ID,
   range: RANGE
 });
 
 const rows = res.data.values;
+
 if (!rows || rows.length < 2) {
-  console.log("Sheet is empty. Exiting safely.");
+  console.log("Sheet is empty or has no data rows. Exiting safely.");
   process.exit(0);
 }
 
 const headers = rows[0];
 const dataRows = rows.slice(1);
 
+// ---------- COLUMN MAPPING ----------
 const col = name =>
   headers.findIndex(h => h.trim().toLowerCase() === name.toLowerCase());
 
@@ -39,31 +50,34 @@ const statusCol = col("Status");
 const slugCol = col("Slug");
 
 if (dateCol === -1 || statusCol === -1 || slugCol === -1) {
-  throw new Error("Required columns (Date, Status, Slug) not found");
+  throw new Error("Required columns (Date, Status, Slug) not found in sheet");
 }
 
-// ---------- FILTER PUBLISHED ----------
+// ---------- FILTER PUBLISHED ROWS ----------
 const published = dataRows.filter(
-  r => r[statusCol] === "PUBLISHED" && r[dateCol] && r[slugCol]
+  r =>
+    r[statusCol] === "PUBLISHED" &&
+    r[dateCol] &&
+    r[slugCol]
 );
 
 if (published.length === 0) {
-  console.log("No published blogs found. Exiting safely.");
+  console.log("No PUBLISHED blogs found. Exiting safely.");
   process.exit(0);
 }
 
-// ---------- FIND LATEST DATE ----------
+// ---------- FIND LATEST DATE (ISO SAFE) ----------
 const latestDate = published
   .map(r => r[dateCol])
-  .sort()
+  .sort() // ISO YYYY-MM-DD sorts correctly
   .reverse()[0];
 
 console.log(`Latest published date: ${latestDate}`);
 
-// ---------- ALL BLOGS ON LATEST DATE ----------
+// ---------- ALL BLOGS ON THAT DATE ----------
 const targets = published.filter(r => r[dateCol] === latestDate);
 
-console.log(`Blogs to process: ${targets.length}`);
+console.log(`Blogs to process on ${latestDate}: ${targets.length}`);
 
 // ---------- PROCESS EACH BLOG ----------
 for (const row of targets) {
@@ -88,9 +102,9 @@ for (const row of targets) {
 
     console.log(`Shopify metadata updated for: ${slug}`);
   } catch (err) {
-    console.error(`Failed for blog ${slug}:`, err.message);
-    // continue with next blog
+    console.error(`Failed for blog ${slug}: ${err.message}`);
+    // continue to next blog
   }
 }
 
-console.log("\nMetadata automation completed.");
+console.log("\nMetadata automation completed successfully.");
