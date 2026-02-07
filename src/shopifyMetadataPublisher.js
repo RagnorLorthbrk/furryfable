@@ -9,8 +9,8 @@ export async function updateShopifyMetadata(slug, metadata) {
 
   const baseUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}`;
 
-  // 1. Find article by handle
-  const articlesRes = await axios.get(
+  // Find article by handle
+  const res = await axios.get(
     `${baseUrl}/articles.json?handle=${slug}`,
     {
       headers: {
@@ -19,12 +19,12 @@ export async function updateShopifyMetadata(slug, metadata) {
     }
   );
 
-  const article = articlesRes.data.articles?.[0];
+  const article = res.data.articles?.[0];
   if (!article) {
     throw new Error(`Shopify article not found for slug: ${slug}`);
   }
 
-  // 2. PATCH metadata only
+  // PATCH metadata only
   await axios.put(
     `${baseUrl}/articles/${article.id}.json`,
     {
@@ -45,8 +45,4 @@ export async function updateShopifyMetadata(slug, metadata) {
     {
       headers: {
         "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-        "Content-Type": "application/json"
-      }
-    }
-  );
-}
+        "Content-Type":
