@@ -14,16 +14,15 @@ const shopify = axios.create({
 
 export async function publishToShopify({ title, html, slug, imagePath, metadata }) {
   const articleData = {
-    title: title,
+    title,
     body_html: html,
     summary_html: metadata.excerpt || "",
     tags: metadata.tags ? metadata.tags.join(", ") : "",
-    author: "Ragnor",
+    author: "Manoj", // Set as your profile name
     handle: slug,
     published: true
   };
 
-  // Only add image if it exists
   if (imagePath && fs.existsSync(imagePath)) {
     articleData.image = {
       attachment: fs.readFileSync(path.resolve(imagePath), "base64"),
@@ -31,11 +30,11 @@ export async function publishToShopify({ title, html, slug, imagePath, metadata 
     };
   }
 
-  // 1. Create Article
+  // 1. Create the Article
   const res = await shopify.post("/articles.json", { article: articleData });
   const articleId = res.data.article.id;
 
-  // 2. Push SEO Meta Description
+  // 2. Set SEO Meta Description (using Shopify Metafields)
   await shopify.post(`/articles/${articleId}/metafields.json`, {
     metafield: {
       namespace: "global",
@@ -47,6 +46,6 @@ export async function publishToShopify({ title, html, slug, imagePath, metadata 
 
   return {
     id: articleId,
-    adminUrl: `https://admin.shopify.com/store/${SHOPIFY_STORE_DOMAIN.replace(".myshopify.com", "")}/content/articles/${articleId}`
+    adminUrl: `https://admin.shopify.com/store/${SHOPIFY_STORE_DOMAIN.split('.')[0]}/content/articles/${articleId}`
   };
 }
