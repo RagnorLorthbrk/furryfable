@@ -27,7 +27,7 @@ export async function generateImages(slug, imageTheme) {
       model: "dall-e-3",
       prompt: finalPrompt,
       n: 1,
-      size: "1024x1024",
+      size: "2000x500",
       response_format: "b64_json"
     });
 
