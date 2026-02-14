@@ -7,9 +7,11 @@ export async function generateMetadata(blogContent) {
     throw new Error("GEMINI_API_KEY is missing");
   }
 
+  // Using the stable 1.5-flash endpoint to avoid 404 errors
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
   const prompt = `
 You are an SEO expert for a premium pet brand.
-
 From the blog content below, generate:
 1. A short excerpt (max 160 characters)
 2. A meta description (max 155 characters)
@@ -23,41 +25,22 @@ Respond ONLY in valid JSON:
 }
 
 Blog content:
-"""
-${blogContent.slice(0, 7000)}
-"""
+${blogContent.slice(0, 8000)}
 `;
 
-  const response = await axios.post(
-    "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent",
-    {
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }]
-        }
-      ]
-    },
-    {
-      headers: {
-        "Content-Type": "application/json"
-      },
-      params: {
-        key: apiKey
-      }
-    }
-  );
+  const response = await axios.post(url, {
+    contents: [{ parts: [{ text: prompt }] }]
+  });
 
-  const text =
-    response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-  if (!text) {
-    throw new Error("Empty response from Gemini");
-  }
+  if (!text) throw new Error("Empty response from Gemini Metadata Generator");
 
   try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`Gemini returned invalid JSON:\n${text}`);
+    // Clean potential markdown code blocks from AI response
+    const cleanJson = text.replace(/```json|```/g, "").trim();
+    return JSON.parse(cleanJson);
+  } catch (err) {
+    throw new Error(`Invalid JSON from Gemini: ${text}`);
   }
 }
