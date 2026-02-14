@@ -8,41 +8,60 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const IMAGE_DIR = "images/blog";
 
 /**
- * Generate featured + thumbnail images for a blog
- * FALLBACK: If OpenAI fails (quota), it will log and you can manually add.
+ * Main function with Fallback Logic:
+ * 1. Try OpenAI (DALL-E 3)
+ * 2. If it fails, Try Gemini (Nano Banana)
  */
 export async function generateImages(slug, imageTheme) {
   if (!fs.existsSync(IMAGE_DIR)) {
     fs.mkdirSync(IMAGE_DIR, { recursive: true });
   }
 
-  const prompt = `Photorealistic lifestyle image for a premium pet brand: ${imageTheme}. Dogs and cats only. No text, typography, or logos. Clean background, natural lighting, 8k resolution.`;
-
   const featuredPath = path.join(IMAGE_DIR, `${slug}-featured.png`);
-  const thumbPath = path.join(IMAGE_DIR, `${slug}-thumb.png`);
+  const prompt = `Photorealistic lifestyle pet photography: ${imageTheme}. High-end lighting, dogs and cats only, no text, premium brand feel.`;
 
+  // --- STEP 1: TRY OPENAI ---
   try {
-    console.log("🎨 Attempting Image Generation with OpenAI...");
+    console.log("🎨 Attempting OpenAI Image Generation...");
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
     
     const response = await openai.images.generate({
-      model: "dall-e-3", // Standard model
-      prompt,
+      model: "dall-e-3",
+      prompt: prompt,
       n: 1,
       size: "1024x1024",
       response_format: "b64_json"
     });
 
     fs.writeFileSync(featuredPath, Buffer.from(response.data[0].b64_json, "base64"));
-    fs.writeFileSync(thumbPath, Buffer.from(response.data[0].b64_json, "base64"));
-    
-    return { featured: featuredPath, thumb: thumbPath };
+    console.log("✅ Success: Image generated via OpenAI.");
+    return { featured: featuredPath };
 
   } catch (err) {
-    console.error("⚠️ OpenAI Image Error (likely quota):", err.message);
-    console.log("🔄 Fallback: As you are using Gemini for text, please use your Gemini Image credits manually if this is a recurring issue.");
+    console.warn("⚠️ OpenAI Failed (Quota/Error). Switching to Gemini Fallback...");
     
-    // Create a placeholder or throw a descriptive error to stop the push of broken files
-    throw new Error("IMAGE_GENERATION_FAILED: Check OpenAI Quota or use Gemini.");
+    // --- STEP 2: FALLBACK TO GEMINI ---
+    try {
+      // Using the latest Gemini 2.5 Flash Image model (Nano Banana)
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${GEMINI_API_KEY}`;
+      
+      const geminiRes = await axios.post(geminiUrl, {
+        contents: [{ parts: [{ text: `Generate a high-quality 1024x1024 image: ${prompt}` }] }]
+      });
+
+      // Gemini returns image data in the parts array
+      const imageData = geminiRes.data.candidates[0].content.parts.find(p => p.inlineData)?.inlineData.data;
+
+      if (!imageData) throw new Error("Gemini returned no image data.");
+
+      fs.writeFileSync(featuredPath, Buffer.from(imageData, "base64"));
+      console.log("✅ Success: Image generated via Gemini Fallback.");
+      return { featured: featuredPath };
+
+    } catch (geminiErr) {
+      console.error("❌ CRITICAL: Both OpenAI and Gemini failed to generate images.", geminiErr.message);
+      // Return null so the blog still publishes, just without a new image
+      return { featured: null };
+    }
   }
 }
