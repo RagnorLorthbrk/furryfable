@@ -18,7 +18,7 @@ export async function publishToShopify({ title, html, slug, imagePath, metadata 
     body_html: html,
     summary_html: metadata.excerpt || "",
     tags: metadata.tags ? metadata.tags.join(", ") : "",
-    author: "Manoj", // Set as your profile name
+    author: "Ragnor lrthbrk", // Set as your profile name
     handle: slug,
     published: true
   };
