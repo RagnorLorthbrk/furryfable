@@ -7,8 +7,8 @@ export async function generateMetadata(blogContent) {
     throw new Error("GEMINI_API_KEY is missing");
   }
 
-  // Using the stable 1.5-flash endpoint to avoid 404 errors
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  // Updated to the current stable model to avoid 404 errors
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   const prompt = `
 You are an SEO expert for a premium pet brand.
@@ -33,11 +33,10 @@ ${blogContent.slice(0, 8000)}
   });
 
   const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
   if (!text) throw new Error("Empty response from Gemini Metadata Generator");
 
   try {
-    // Clean potential markdown code blocks from AI response
+    // Cleans potential markdown formatting before parsing
     const cleanJson = text.replace(/```json|```/g, "").trim();
     return JSON.parse(cleanJson);
   } catch (err) {
