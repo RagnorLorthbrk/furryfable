@@ -12,7 +12,6 @@ try {
   let row = await getNextBlogRow();
 
   if (!row) {
-    console.log("🔍 No pending blogs. Generating topic...");
     const topic = await generateNewTopic();
     await addNewTopicToSheet(topic);
     row = await getNextBlogRow();
@@ -20,27 +19,17 @@ try {
 
   let { rowIndex, title, primaryKeyword, slug, imageTheme } = row;
 
-  if (!title) {
-    const topic = await generateNewTopic();
-    title = topic.title;
-    primaryKeyword = topic.primaryKeyword;
-    imageTheme = topic.imageTheme;
-    slug = slugify(title, { lower: true, strict: true });
-    // Update sheet immediately to lock the row
-    await updateSheetRow(rowIndex, { Date: new Date().toISOString().split("T")[0], Title: title, "Primary Keyword": primaryKeyword, Slug: slug, Status: "IN_PROGRESS", "Image Theme": imageTheme });
-  }
-
-  console.log(`📝 Content for: ${title}`);
+  console.log(`📝 Writing Content: ${title}`);
   const html = await generateBlogHTML({ title, primaryKeyword });
 
-  console.log("📊 Generating SEO Metadata...");
+  console.log("📊 Generating SEO Metadata via Gemini...");
   const metadata = await generateMetadata(html);
 
-  console.log("🖼️ Generating images...");
+  console.log("🖼️ Handling Images...");
   const images = await generateImages(slug, imageTheme);
 
-  console.log("🚀 Publishing to Shopify with SEO tags...");
-  const shopifyResult = await publishToShopify({
+  console.log("🚀 Publishing to Shopify...");
+  const result = await publishToShopify({
     title,
     html,
     slug,
@@ -57,7 +46,7 @@ try {
     "Image Theme": imageTheme
   });
 
-  console.log(`✅ Success! Admin URL: ${shopifyResult.adminUrl}`);
+  console.log(`✅ Success! Published at: ${result.adminUrl}`);
 
 } catch (err) {
   console.error("❌ FATAL ERROR:", err.message);
