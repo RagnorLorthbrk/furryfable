@@ -71,11 +71,19 @@ ${internalLinks || "No existing blogs available yet."}
 
 4. COLLECTION LINKS (Link to product pages naturally):
    - Pet Toys: https://www.furryfable.com/collections/pet-toys
-   - Water Bottles: https://www.furryfable.com/collections/pet-water-bottle
+   - Dog Toys: https://www.furryfable.com/collections/dog-toys
+   - Cat Toys: https://www.furryfable.com/collections/cat-toys
+   - Water Bottles & Feeders: https://www.furryfable.com/collections/pet-water-bottle
    - Pet Apparel: https://www.furryfable.com/collections/pet-apparels
    - Harness & Leash: https://www.furryfable.com/collections/harness-and-leash
+   - Pet Outdoor Supplies: https://www.furryfable.com/collections/pet-outdoor-supplies
+   - Safety & High-Tech Gear: https://www.furryfable.com/collections/safety-high-tech-gear
+   - Training & Control Gear: https://www.furryfable.com/collections/training-control-gear
+   - Comfort & Anxiety Solutions: https://www.furryfable.com/collections/comfort-luxury-anxiety-solutions
 
-   Rules: Mention 2-3 collections naturally. Example: "A quality <a href='...'>pet harness</a> can make walks safer."
+   Rules: Link to 3-5 collections naturally. ALWAYS link the most relevant collection for the topic.
+   Example: "A quality <a href='https://www.furryfable.com/collections/harness-and-leash'>no-pull harness</a> can make walks safer."
+   CRITICAL: Every blog MUST include at least one strong CTA linking to a relevant product collection.
 
 ═══════════════════════════════════════
 SECTION 2: GEO (Generative Engine Optimization)

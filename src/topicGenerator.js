@@ -35,7 +35,17 @@ Website: https://www.furryfable.com
 Niche: Premium Dogs & Cats products and care
 Target: Pet parents in USA & Canada
 Season: ${season} ${currentYear}
-Collections: pet toys, pet water bottles, pet apparel, harness & leash
+Collections & Products (CREATE TOPICS THAT LEAD TO THESE):
+- Pet Toys: interactive cat balls, puzzle toys, chew toys for aggressive chewers, cat scratching posts, automatic ball launchers, LED mouse toys
+- Water Bottles & Feeders: portable travel dispensers, gravity feeders, kennel water bottles, automatic smart feeders
+- Pet Apparel: dog hoodies, winter jackets, summer outfits, pet sweaters, Halloween costumes
+- Harness & Leash: no-pull mesh harness, retractable leashes, reflective leashes, velvet collar sets, car seat belts
+- Pet Outdoor: dog car seat covers, dog backpacks, pooper scooper kits, poop bag dispensers
+- Safety & High-Tech: AirTag pet collars, ultrasonic animal repellents, health monitoring pee pads
+- Training & Control: dog muzzles, agility equipment, anxiety vests
+- Comfort & Luxury: calming anxiety vests, cat litter mats, washable pee pads
+- Cat Toys: cat towers, scratching boards, interactive teaser toys, electric fish toys
+- Dog Toys: rubber balls, rope toys, frisbees, treat-dispensing puzzles
 
 ALREADY PUBLISHED (DO NOT REPEAT):
 - ${recentTitles || "None yet"}
@@ -50,16 +60,18 @@ TOPIC SELECTION STRATEGY:
 5. INCLUDE long-tail keyword (3-5 words) as primary keyword
 6. AIM for low-medium competition keywords that a newer site can rank for
 
-TOPIC CATEGORIES TO ROTATE THROUGH:
-- Buying guides ("Best X for Y")
-- How-to guides ("How to X for Your Dog/Cat")
-- Comparison posts ("X vs Y: Which is Better for Your Pet")
-- Seasonal care guides
-- Problem-solving content ("Why Does My Dog/Cat X")
-- Data/trend posts ("X Statistics & Trends in ${currentYear}")
-- Size/measurement guides
-- Breed-specific care
-- New pet owner guides
+TOPIC CATEGORIES TO ROTATE THROUGH (prioritize buyer-intent):
+- Buying guides ("Best X for Y") — HIGHEST PRIORITY, drives purchases
+- How-to guides ("How to X for Your Dog/Cat") — link to products naturally
+- Comparison posts ("X vs Y: Which is Better for Your Pet") — drives product discovery
+- Problem-solving content ("Why Does My Dog/Cat X") — link to solutions we sell
+- Breed-specific product guides ("Best Harness for Golden Retrievers")
+- Seasonal product guides ("Must-Have Dog Gear for Spring Walks")
+- New pet owner checklists ("First-Time Puppy Owner Essentials")
+- Product care guides ("How to Clean Your Dog's Harness")
+
+CRITICAL: At least 60% of topics should have COMMERCIAL search intent (user is looking to buy something).
+Topics like "statistics" or "studies" get traffic but ZERO sales. Focus on topics where the reader needs a product we sell.
 
 Respond ONLY in strict JSON:
 {
