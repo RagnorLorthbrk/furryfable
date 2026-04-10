@@ -112,7 +112,7 @@ Blog:
 
 Social Media:
 - Posts this week: ${socialData?.postsThisWeek || "N/A"}
-- Channels active: Facebook, Instagram${process.env.PINTEREST_ACCESS_TOKEN ? ", Pinterest" : ""}${process.env.LINKEDIN_ACCESS_TOKEN ? ", LinkedIn" : ""}
+- Channels active: Facebook, Instagram, Pinterest, Quora
 
 GOAL: 5 sales per week now, scaling to 100 sales/month in 3 months.
 CONSTRAINT: Zero ad budget. Organic only.

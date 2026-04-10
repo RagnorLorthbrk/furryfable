@@ -58,6 +58,21 @@ ${recentPerf.map(r => `Date: ${r[0]} | Orders: ${r[1]} | Revenue: $${r[2]} | Blo
 RECENT BLOG TOPICS:
 ${recentBlogs.map(r => `- ${r[1]} (keyword: ${r[2]})`).join("\n")}
 
+PRODUCT CATALOG (topics MUST lead to these products):
+- Pet Toys: interactive cat balls, puzzle toys, chew toys for aggressive chewers, scratching posts, automatic ball launchers, LED mouse toys
+- Water Bottles & Feeders: portable travel dispensers, gravity feeders, kennel bottles, smart auto feeders
+- Pet Apparel: dog hoodies, winter jackets, summer outfits, sweaters, costumes
+- Harness & Leash: no-pull mesh harness, retractable leashes, reflective leashes, velvet collar sets, car seat belts
+- Outdoor: dog car seat covers, dog backpacks, pooper scooper kits
+- Safety: AirTag pet collars, ultrasonic repellents, health monitoring pee pads
+- Training: dog muzzles, agility equipment, anxiety calming vests
+- Cat: cat towers, scratching boards, teaser toys, electric fish toys, litter mats
+
+ACTIVE CHANNELS:
+- Blog: 1/day to Shopify (SEO + GEO)
+- Social: 3 posts/day to Facebook, Instagram, Pinterest
+- Quora: 2 answers/day (GEO optimization)
+
 GOAL: Scale from current performance to 100 organic sales/month in 3 months.
 
 TASK: Generate an optimized content plan for next week.
@@ -66,7 +81,10 @@ OPTIMIZATION RULES:
 1. If orders are flat → recommend more commercial-intent topics (buying guides, "best X for Y")
 2. If traffic is growing but sales aren't → recommend conversion-focused content (product comparisons, use cases)
 3. If social engagement is low → recommend more relatable, shareable topics
-4. Always include mix of: 2 SEO-focused, 2 GEO-focused, 3 social-first topics
+4. At least 4 of 7 topics MUST have commercial search intent (user looking to buy)
+5. Every topic must naturally lead to at least one product collection
+6. Include at least 1 breed-specific guide (e.g., "Best Harness for French Bulldogs")
+7. Include at least 1 seasonal topic matching current time of year
 
 Generate exactly 7 blog topics (one per day) in JSON:
 {
@@ -81,8 +99,9 @@ Generate exactly 7 blog topics (one per day) in JSON:
       "type": "seo|geo|social|conversion"
     }
   ],
-  "socialFocus": "What social media should emphasize this week",
-  "geoFocus": "Which AI engines to optimize for and how"
+  "socialFocus": "What social media should emphasize this week (specific product categories to highlight)",
+  "geoFocus": "Which AI engines to optimize for and specific Quora question topics to target",
+  "productPush": "Which 2-3 product collections to push hardest this week and why"
 }
 `;
 
@@ -133,13 +152,14 @@ async function saveStrategy(plan) {
     plan.weeklyStrategy || "",
     plan.socialFocus || "",
     plan.geoFocus || "",
-    plan.topics?.map(t => t.title).join(" | ") || ""
+    plan.topics?.map(t => t.title).join(" | ") || "",
+    plan.productPush || ""
   ];
 
   try {
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Strategy!A:E",
+      range: "Strategy!A:F",
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] }
     });
@@ -154,16 +174,16 @@ async function saveStrategy(plan) {
 
       await sheets.spreadsheets.values.update({
         spreadsheetId: SPREADSHEET_ID,
-        range: "Strategy!A1:E1",
+        range: "Strategy!A1:F1",
         valueInputOption: "RAW",
         requestBody: {
-          values: [["Date", "Weekly Strategy", "Social Focus", "GEO Focus", "Topics"]]
+          values: [["Date", "Weekly Strategy", "Social Focus", "GEO Focus", "Topics", "Product Push"]]
         }
       });
 
       await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
-        range: "Strategy!A:E",
+        range: "Strategy!A:F",
         valueInputOption: "USER_ENTERED",
         requestBody: { values: [row] }
       });
