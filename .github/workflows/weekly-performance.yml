@@ -1,12 +1,12 @@
-name: FurryFable Blog Automation (SEO + GEO)
+name: Weekly Performance Tracker
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "30 11 * * *" # runs daily at 5:00 PM IST
+    - cron: "0 6 * * 0"   # Every Sunday at 6:00 AM UTC
+  workflow_dispatch:
 
 jobs:
-  run:
+  track-performance:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,23 +21,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run SEO+GEO blog automation
-        run: node src/index.js
+      - name: Run Performance Tracker
+        run: node src/performanceTracker.js
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
           SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
-
-      - name: Commit and push generated files
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add .
-          git commit -m "Add SEO+GEO optimized blog content" || echo "Nothing to commit"
-          git push

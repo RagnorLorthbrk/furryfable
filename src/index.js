@@ -1,31 +1,38 @@
 import slugify from "slugify";
-import { getNextBlogRow, updateSheetRow, addNewTopicToSheet } from "./sheetManager.js";
+import { getNextBlogRow, updateSheetRow, addNewTopicToSheet, getAllExistingTitles } from "./sheetManager.js";
 import { generateBlogHTML } from "./blogGenerator.js";
 import { generateImages } from "./imageGenerator.js";
 import { publishToShopify } from "./shopifyPublisher.js";
 import { generateNewTopic } from "./topicGenerator.js";
 import { generateMetadata } from "./metadataGenerator.js";
 
-console.log("🚀 Blog automation started");
+console.log("🚀 Blog automation started (SEO + GEO Optimized)");
 
 try {
   let row = await getNextBlogRow();
 
   if (!row) {
-    const topic = await generateNewTopic();
+    const existingTitles = await getAllExistingTitles();
+    const topic = await generateNewTopic(existingTitles);
     await addNewTopicToSheet(topic);
     row = await getNextBlogRow();
   }
 
   let { rowIndex, title, primaryKeyword, slug, imageTheme } = row;
 
-  console.log(`📝 Writing Content: ${title}`);
-  const html = await generateBlogHTML({ title, primaryKeyword });
+  // Generate slug if missing
+  if (!slug) {
+    slug = slugify(title, { lower: true, strict: true });
+  }
 
-  console.log("📊 Generating SEO Metadata via Gemini...");
+  console.log(`📝 Writing SEO+GEO Optimized Content: ${title}`);
+  console.log(`   🔑 Primary Keyword: ${primaryKeyword}`);
+  const html = await generateBlogHTML({ title, primaryKeyword, slug });
+
+  console.log("📊 Generating SEO Metadata...");
   const metadata = await generateMetadata(html);
 
-  console.log("🖼️ Handling Images...");
+  console.log("🖼️ Generating Featured Image...");
   const images = await generateImages(slug, imageTheme);
 
   console.log("🚀 Publishing to Shopify...");
@@ -46,7 +53,8 @@ try {
     "Image Theme": imageTheme
   });
 
-  console.log(`✅ Success! Published at: ${result.adminUrl}`);
+  console.log(`✅ Published: ${result.adminUrl}`);
+  console.log(`🌐 Live URL: https://www.furryfable.com/blogs/blog/${slug}`);
 
 } catch (err) {
   console.error("❌ FATAL ERROR:", err.message);

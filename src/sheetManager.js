@@ -52,6 +52,34 @@ export async function getNextBlogRow() {
   return null;
 }
 
+/**
+ * Get all published blog slugs and titles for internal linking
+ */
+export async function getPublishedBlogSlugs() {
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${SHEET_NAME}!A2:F1000`
+  });
+
+  const rows = res.data.values || [];
+  return rows
+    .map(row => normalizeRow(row))
+    .filter(r => r.status === "PUBLISHED" && r.slug && r.title)
+    .map(r => ({ title: r.title, slug: r.slug }));
+}
+
+/**
+ * Get all existing titles for deduplication
+ */
+export async function getAllExistingTitles() {
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${SHEET_NAME}!B2:B1000`
+  });
+
+  return (res.data.values || []).flat().filter(Boolean);
+}
+
 export async function updateSheetRow(rowIndex, data) {
   const values = [[
     data.Date || "",
