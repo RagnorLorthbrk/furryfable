@@ -67,18 +67,28 @@ async function loadCollections() {
 // ═══════════════════════════════════════
 async function getExistingProductTitles() {
   const titles = new Set();
-  let page = 1;
-  let hasMore = true;
+  let url = "/products.json?limit=250&fields=title";
 
-  while (hasMore) {
-    const res = await shopify.get("/products.json", {
-      params: { limit: 250, page, fields: "title" }
-    });
-    const products = res.data.products || [];
-    products.forEach(p => titles.add(p.title.toLowerCase().trim()));
+  while (url) {
+    try {
+      const res = await shopify.get(url);
+      const products = res.data.products || [];
+      products.forEach(p => titles.add(p.title.toLowerCase().trim()));
 
-    if (products.length < 250) hasMore = false;
-    page++;
+      // Cursor-based pagination via Link header
+      const linkHeader = res.headers?.link || "";
+      const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+      if (nextMatch) {
+        // Extract path from full URL
+        const nextUrl = new URL(nextMatch[1]);
+        url = nextUrl.pathname.replace(`/admin/api/${SHOPIFY_API_VERSION}`, "") + nextUrl.search;
+      } else {
+        url = null;
+      }
+    } catch (err) {
+      console.warn("Error fetching products:", err.message);
+      url = null;
+    }
   }
 
   return titles;
@@ -437,5 +447,10 @@ async function main() {
 
 main().catch(err => {
   console.error("FATAL:", err.message);
+  if (err.response) {
+    console.error("Status:", err.response.status);
+    console.error("Data:", JSON.stringify(err.response.data));
+    console.error("URL:", err.config?.url);
+  }
   process.exit(1);
 });
