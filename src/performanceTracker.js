@@ -66,6 +66,85 @@ async function fetchShopifyMetrics() {
 }
 
 /**
+ * Fetch Google Search Console data (clicks, impressions, top queries)
+ */
+async function fetchSearchConsoleMetrics() {
+  const siteUrl = process.env.GSC_SITE_URL || "https://www.furryfable.com";
+
+  try {
+    const searchConsole = google.searchconsole({ version: "v1", auth });
+
+    const endDate = new Date().toISOString().split("T")[0];
+    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+    // Overall performance
+    const overallRes = await searchConsole.searchanalytics.query({
+      siteUrl,
+      requestBody: {
+        startDate,
+        endDate,
+        dimensions: [],
+        rowLimit: 1
+      }
+    });
+
+    const overall = overallRes.data.rows?.[0] || {};
+
+    // Top queries
+    const queriesRes = await searchConsole.searchanalytics.query({
+      siteUrl,
+      requestBody: {
+        startDate,
+        endDate,
+        dimensions: ["query"],
+        rowLimit: 20,
+        orderBy: [{ fieldName: "clicks", sortOrder: "DESCENDING" }]
+      }
+    });
+
+    const topQueries = (queriesRes.data.rows || []).map(r => ({
+      query: r.keys[0],
+      clicks: r.clicks,
+      impressions: r.impressions,
+      ctr: (r.ctr * 100).toFixed(1) + "%",
+      position: r.position.toFixed(1)
+    }));
+
+    // Top pages
+    const pagesRes = await searchConsole.searchanalytics.query({
+      siteUrl,
+      requestBody: {
+        startDate,
+        endDate,
+        dimensions: ["page"],
+        rowLimit: 15,
+        orderBy: [{ fieldName: "clicks", sortOrder: "DESCENDING" }]
+      }
+    });
+
+    const topPages = (pagesRes.data.rows || []).map(r => ({
+      page: r.keys[0],
+      clicks: r.clicks,
+      impressions: r.impressions,
+      ctr: (r.ctr * 100).toFixed(1) + "%",
+      position: r.position.toFixed(1)
+    }));
+
+    return {
+      totalClicks: overall.clicks || 0,
+      totalImpressions: overall.impressions || 0,
+      avgCtr: overall.ctr ? (overall.ctr * 100).toFixed(1) + "%" : "0%",
+      avgPosition: overall.position?.toFixed(1) || "N/A",
+      topQueries,
+      topPages
+    };
+  } catch (err) {
+    console.error("Search Console error:", err.message);
+    return null;
+  }
+}
+
+/**
  * Fetch blog performance from Google Sheets (published blogs)
  */
 async function fetchBlogMetrics() {
@@ -110,8 +189,15 @@ Blog:
 - Total published blogs: ${blogData?.totalBlogs || 0}
 - Blogs published this week: ${blogData?.last7DaysBlogs || 0}
 
+Google Search Console (last 7 days):
+- Total clicks: ${socialData?.gsc?.totalClicks || "N/A"}
+- Total impressions: ${socialData?.gsc?.totalImpressions || "N/A"}
+- Average CTR: ${socialData?.gsc?.avgCtr || "N/A"}
+- Average position: ${socialData?.gsc?.avgPosition || "N/A"}
+- Top queries: ${JSON.stringify(socialData?.gsc?.topQueries?.slice(0, 10) || [])}
+- Top pages: ${JSON.stringify(socialData?.gsc?.topPages?.slice(0, 5) || [])}
+
 Social Media:
-- Posts this week: ${socialData?.postsThisWeek || "N/A"}
 - Channels active: Facebook, Instagram, Pinterest, Quora
 
 GOAL: 5 sales per week now, scaling to 100 sales/month in 3 months.
@@ -158,7 +244,7 @@ Generate a JSON report:
 /**
  * Write performance report to Google Sheets
  */
-async function writeReport(shopifyData, blogData, analysis) {
+async function writeReport(shopifyData, blogData, analysis, gscData) {
   const date = new Date().toISOString().split("T")[0];
 
   // Ensure "Performance" sheet exists or create row in existing sheet
@@ -173,13 +259,18 @@ async function writeReport(shopifyData, blogData, analysis) {
     JSON.stringify(analysis?.weaknesses || []),
     JSON.stringify(analysis?.actionItems || []),
     JSON.stringify(analysis?.topicRecommendations || []),
-    analysis?.conversionTips || ""
+    analysis?.conversionTips || "",
+    gscData?.totalClicks || 0,
+    gscData?.totalImpressions || 0,
+    gscData?.avgCtr || "",
+    gscData?.avgPosition || "",
+    JSON.stringify(gscData?.topQueries?.slice(0, 5) || [])
   ];
 
   try {
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Performance!A:K",
+      range: "Performance!A:P",
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [reportRow] }
     });
@@ -204,17 +295,17 @@ async function writeReport(shopifyData, blogData, analysis) {
         // Add headers
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
-          range: "Performance!A1:K1",
+          range: "Performance!A1:P1",
           valueInputOption: "RAW",
           requestBody: {
-            values: [["Date", "Weekly Orders", "Weekly Revenue", "Total Blogs", "Blogs This Week", "Summary", "Strengths", "Weaknesses", "Action Items", "Topic Recommendations", "Conversion Tips"]]
+            values: [["Date", "Weekly Orders", "Weekly Revenue", "Total Blogs", "Blogs This Week", "Summary", "Strengths", "Weaknesses", "Action Items", "Topic Recommendations", "Conversion Tips", "GSC Clicks", "GSC Impressions", "GSC CTR", "GSC Avg Position", "GSC Top Queries"]]
           }
         });
 
         // Add data
         await sheets.spreadsheets.values.append({
           spreadsheetId: SPREADSHEET_ID,
-          range: "Performance!A:K",
+          range: "Performance!A:P",
           valueInputOption: "USER_ENTERED",
           requestBody: { values: [reportRow] }
         });
@@ -231,15 +322,19 @@ async function writeReport(shopifyData, blogData, analysis) {
 // Main execution
 console.log("📈 Starting weekly performance tracking...");
 
-const [shopifyData, blogData] = await Promise.all([
+const [shopifyData, blogData, gscData] = await Promise.all([
   fetchShopifyMetrics(),
-  fetchBlogMetrics()
+  fetchBlogMetrics(),
+  fetchSearchConsoleMetrics()
 ]);
 
-console.log("📊 Shopify:", shopifyData ? `${shopifyData.weeklyOrders} orders, $${shopifyData.weeklyRevenue} revenue` : "No data");
-console.log("📝 Blog:", `${blogData.totalBlogs} total, ${blogData.last7DaysBlogs} this week`);
+console.log("Shopify:", shopifyData ? `${shopifyData.weeklyOrders} orders, $${shopifyData.weeklyRevenue} revenue` : "No data");
+console.log("Blog:", `${blogData.totalBlogs} total, ${blogData.last7DaysBlogs} this week`);
+if (gscData) {
+  console.log("Search Console:", `${gscData.totalClicks} clicks, ${gscData.totalImpressions} impressions, CTR: ${gscData.avgCtr}, Avg Position: ${gscData.avgPosition}`);
+}
 
-const analysis = await generateWeeklyAnalysis(shopifyData, blogData, {});
+const analysis = await generateWeeklyAnalysis(shopifyData, blogData, { gsc: gscData });
 
 if (analysis) {
   console.log("\n═══════════════════════════════════════");
@@ -258,6 +353,6 @@ if (analysis) {
   });
 }
 
-await writeReport(shopifyData, blogData, analysis);
+await writeReport(shopifyData, blogData, analysis, gscData);
 
 console.log("\n✅ Performance tracking complete.");

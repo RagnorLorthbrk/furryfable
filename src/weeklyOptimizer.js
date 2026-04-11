@@ -28,6 +28,30 @@ async function getPerformanceHistory() {
 }
 
 /**
+ * Read Google Search Console data from latest Performance report
+ */
+async function getSearchConsoleData() {
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: "Performance!L2:P100"
+    });
+    const rows = res.data.values || [];
+    const latest = rows.filter(r => r[0] && parseInt(r[0]) > 0).pop();
+    if (!latest) return null;
+    return {
+      clicks: latest[0] || 0,
+      impressions: latest[1] || 0,
+      ctr: latest[2] || "0%",
+      avgPosition: latest[3] || "N/A",
+      topQueries: latest[4] ? JSON.parse(latest[4]) : []
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Read published blog data to find what content performs best
  */
 async function getBlogHistory() {
@@ -45,7 +69,7 @@ async function getBlogHistory() {
 /**
  * Generate optimized topic queue for next week based on performance data
  */
-async function generateOptimizedTopics(perfHistory, blogHistory) {
+async function generateOptimizedTopics(perfHistory, blogHistory, gscData) {
   const recentPerf = perfHistory.slice(-4); // Last 4 weeks
   const recentBlogs = blogHistory.slice(-14); // Last 2 weeks of blogs
 
@@ -54,6 +78,12 @@ You are an AI-powered growth optimization engine for FurryFable.com (premium pet
 
 PERFORMANCE HISTORY (last 4 reports):
 ${recentPerf.map(r => `Date: ${r[0]} | Orders: ${r[1]} | Revenue: $${r[2]} | Blogs: ${r[4]}/week | Summary: ${r[5]}`).join("\n")}
+
+GOOGLE SEARCH CONSOLE DATA (what people are actually searching):
+${gscData ? `Clicks: ${gscData.clicks} | Impressions: ${gscData.impressions} | CTR: ${gscData.ctr} | Avg Position: ${gscData.avgPosition}
+Top queries people find us for: ${gscData.topQueries?.map(q => `"${q.query}" (${q.clicks} clicks, pos ${q.position})`).join(", ") || "No data yet"}
+
+CRITICAL: Use these search queries to inform topic selection. If we rank for certain queries, create supporting content around those topics to build topical authority. If queries have high impressions but low clicks, create better-targeted content for those terms.` : "No Search Console data available yet."}
 
 RECENT BLOG TOPICS:
 ${recentBlogs.map(r => `- ${r[1]} (keyword: ${r[2]})`).join("\n")}
@@ -194,15 +224,19 @@ async function saveStrategy(plan) {
 // Main execution
 console.log("🧠 Starting weekly optimization engine...");
 
-const [perfHistory, blogHistory] = await Promise.all([
+const [perfHistory, blogHistory, gscData] = await Promise.all([
   getPerformanceHistory(),
-  getBlogHistory()
+  getBlogHistory(),
+  getSearchConsoleData()
 ]);
 
-console.log(`📊 Performance reports: ${perfHistory.length}`);
-console.log(`📝 Published blogs: ${blogHistory.length}`);
+console.log(`Performance reports: ${perfHistory.length}`);
+console.log(`Published blogs: ${blogHistory.length}`);
+if (gscData) {
+  console.log(`GSC: ${gscData.clicks} clicks, ${gscData.impressions} impressions`);
+}
 
-const plan = await generateOptimizedTopics(perfHistory, blogHistory);
+const plan = await generateOptimizedTopics(perfHistory, blogHistory, gscData);
 
 if (plan) {
   console.log("\n═══════════════════════════════════════");
