@@ -125,7 +125,7 @@ EXISTING PRODUCTS IN STORE (DO NOT PICK DUPLICATES OR VERY SIMILAR):
 CANDIDATE PRODUCTS FROM SUPPLIER:
 ${JSON.stringify(productSummaries, null, 2)}
 
-YOUR TASK: Select the TOP 8 products to add to the store (we need extras as buffer since some may be unavailable).
+YOUR TASK: Select the TOP 5 products to add to the store. ALL products below are verified IN-STOCK and available on CJ Dropshipping.
 
 SELECTION CRITERIA:
 1. HIGH DEMAND: Products pet parents actively search for and buy
@@ -154,7 +154,7 @@ IMPORTANT: Only select REAL PET PRODUCTS. Do NOT select:
 - Phone accessories, car accessories
 - Anything not directly for dogs or cats
 
-Return JSON array of exactly 8 selected products (ranked by priority):
+Return JSON array of exactly 5 selected products:
 [
   {
     "index": 0,
@@ -596,49 +596,22 @@ async function main() {
   const cjProducts = await searchPetProducts();
 
   if (cjProducts.length === 0) {
-    console.log("No products found. Exiting.");
+    console.log("No verified products found. Exiting.");
     return;
   }
 
-  // AI selects 8 candidates (buffer — some may be removed on CJ)
-  console.log("\nAI selecting best products...");
+  // AI selects the best 5 products — ALL products are pre-validated as available
+  console.log("\nAI selecting best 5 from verified products...");
   const selections = await selectBestProducts(cjProducts, existingTitles);
-  console.log(`AI selected ${selections.length} candidates\n`);
+  console.log(`AI selected ${selections.length} products\n`);
 
-  // Import loop: validate each product on CJ website BEFORE importing
-  // Stop after 5 successful imports
-  const TARGET_IMPORTS = 5;
+  // Import each selected product — no need to re-validate, already confirmed available
   let imported = 0;
-  let skipped = 0;
 
   for (const sel of selections) {
-    if (imported >= TARGET_IMPORTS) break;
-
     try {
-      console.log(`\n[${imported + 1}/${TARGET_IMPORTS}] Checking: ${sel.seoTitle}`);
+      console.log(`\n[${imported + 1}/5] Importing: ${sel.seoTitle}`);
       console.log(`  CJ PID: ${sel.product.pid}`);
-
-      // Step 1: Check if product is actually available on CJ website
-      console.log(`  Checking CJ product page...`);
-      const available = await isProductAvailable(sel.product.pid);
-      if (!available) {
-        console.log(`  ❌ SKIPPED — Product removed from CJ Dropshipping`);
-        skipped++;
-        continue;
-      }
-      console.log(`  ✅ Product is available on CJ`);
-
-      // Step 2: Get product details from API
-      console.log(`  Fetching product details...`);
-      const details = await getProductDetails(sel.product.pid);
-      if (!details || !details.productImage) {
-        console.log(`  ❌ SKIPPED — No product details or images from CJ API`);
-        skipped++;
-        continue;
-      }
-      sel.product._cachedDetails = details;
-
-      // Step 3: Import to Shopify
       console.log(`  CJ Price: $${sel.product.sellPrice} -> Store: $${(parseFloat(sel.product.sellPrice) * 2).toFixed(2)}`);
       console.log(`  Collection: ${sel.collection}`);
       console.log(`  Reason: ${sel.reason}`);
@@ -665,11 +638,8 @@ async function main() {
         console.error(`  Status: ${err.response.status}`);
         console.error(`  Shopify says: ${JSON.stringify(err.response.data)}`);
       }
-      skipped++;
     }
   }
-
-  console.log(`\nSkipped ${skipped} products (removed/unavailable on CJ)`);
 
   console.log(`\n=== Import Complete: ${imported}/${selections.length} products added as DRAFT ===`);
   console.log("Review them in Shopify Admin -> Products -> Drafts");
