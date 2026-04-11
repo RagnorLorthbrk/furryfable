@@ -7,37 +7,43 @@ if (!CJ_API_KEY) {
   throw new Error("CJ_API_KEY is required");
 }
 
+// Start with no auth — we'll get a proper token first
 const cj = axios.create({
   baseURL: CJ_BASE_URL,
   headers: {
-    "CJ-Access-Token": CJ_API_KEY,
     "Content-Type": "application/json"
   }
 });
 
 /**
- * Get access token from CJ (some endpoints need OAuth token)
+ * Get access token from CJ using the API key
+ * CJ requires POST with apiKey in body to exchange for access token
  */
 let cachedToken = null;
 
-async function getAccessToken() {
+export async function getAccessToken() {
   if (cachedToken) return cachedToken;
 
-  try {
-    const res = await cj.get("/authentication/getAccessToken", {
-      params: { apiKey: CJ_API_KEY }
-    });
+  console.log("Requesting CJ access token...");
 
-    if (res.data.result && res.data.data?.accessToken) {
-      cachedToken = res.data.data.accessToken;
-      // Update headers with the new token
-      cj.defaults.headers["CJ-Access-Token"] = cachedToken;
-      return cachedToken;
-    }
-  } catch (err) {
-    console.warn("Token refresh failed, using API key directly:", err.message);
+  // CJ API v2.0: POST to get access token
+  const res = await axios.post(`${CJ_BASE_URL}/authentication/getAccessToken`, {
+    apiKey: CJ_API_KEY
+  }, {
+    headers: { "Content-Type": "application/json" }
+  });
+
+  if (res.data.result && res.data.data?.accessToken) {
+    cachedToken = res.data.data.accessToken;
+    cj.defaults.headers.common["CJ-Access-Token"] = cachedToken;
+    console.log("CJ access token obtained successfully");
+    return cachedToken;
   }
 
+  // If token exchange fails, try using the API key directly
+  console.warn("Token exchange response:", JSON.stringify(res.data));
+  cachedToken = CJ_API_KEY;
+  cj.defaults.headers.common["CJ-Access-Token"] = CJ_API_KEY;
   return CJ_API_KEY;
 }
 
@@ -46,14 +52,12 @@ async function getAccessToken() {
  * Filters to USA warehouse only
  */
 export async function searchProducts(keyword, page = 1, pageSize = 20) {
-  await getAccessToken();
-
   const res = await cj.get("/product/list", {
     params: {
       productNameEn: keyword,
       pageNum: page,
       pageSize: pageSize,
-      countryCode: "US" // USA warehouse filter
+      countryCode: "US"
     }
   });
 
@@ -69,8 +73,6 @@ export async function searchProducts(keyword, page = 1, pageSize = 20) {
  * Get full product details including variants and images
  */
 export async function getProductDetails(pid) {
-  await getAccessToken();
-
   const res = await cj.get("/product/query", {
     params: { pid }
   });
@@ -106,6 +108,9 @@ export async function getProductVariants(pid) {
  * Returns a flat list of unique products from USA warehouse
  */
 export async function searchPetProducts() {
+  // Authenticate first — single token request
+  await getAccessToken();
+
   const categories = [
     "pet toy", "dog toy", "cat toy",
     "pet harness", "dog harness", "dog leash",
@@ -139,9 +144,14 @@ export async function searchPetProducts() {
       }
 
       // Rate limiting — CJ API has limits
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 1000));
     } catch (err) {
       console.warn(`  Search failed for "${keyword}": ${err.message}`);
+      // If 429 rate limit, wait longer
+      if (err.response?.status === 429) {
+        console.log("  Rate limited. Waiting 5 seconds...");
+        await new Promise(r => setTimeout(r, 5000));
+      }
     }
   }
 
