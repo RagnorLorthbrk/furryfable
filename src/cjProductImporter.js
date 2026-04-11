@@ -253,14 +253,32 @@ async function createShopifyProduct(product, selection) {
   }
 
   // Build variants from CJ product
-  // Shopify requires option1 (not title) for variants
+  // Shopify requires unique option1 values — deduplicate by appending index
   const variants = [];
+  const seenOptions = new Map(); // track option name occurrences
+
   if (details?.variants && details.variants.length > 0) {
     for (const v of details.variants) {
       const vPrice = parseFloat(String(v.variantSellPrice || v.sellPrice || cjPrice).replace(/[^0-9.]/g, "")) || cjPrice;
-      const optionName = (v.variantNameEn || v.variantName || "Default").substring(0, 255);
+
+      // Build a unique option name from all available variant info
+      let optionParts = [];
+      if (v.variantNameEn || v.variantName) optionParts.push(v.variantNameEn || v.variantName);
+      if (v.variantProperty) optionParts.push(v.variantProperty);
+      if (v.variantColor) optionParts.push(v.variantColor);
+      if (v.variantSize) optionParts.push(v.variantSize);
+
+      let optionName = optionParts.length > 0 ? optionParts.join(" / ") : "Default";
+
+      // Ensure uniqueness — if duplicate, append counter
+      const count = seenOptions.get(optionName) || 0;
+      seenOptions.set(optionName, count + 1);
+      if (count > 0) {
+        optionName = `${optionName} #${count + 1}`;
+      }
+
       variants.push({
-        option1: optionName,
+        option1: optionName.substring(0, 255),
         price: (vPrice * 2).toFixed(2),
         compare_at_price: (vPrice * 3).toFixed(2),
         sku: (v.variantSku || `FF-${product.pid}-${v.vid || "DEF"}`).substring(0, 255),
@@ -285,12 +303,12 @@ async function createShopifyProduct(product, selection) {
   const finalVariants = variants.slice(0, 100);
 
   // Determine option name based on variant names
-  let optionTitle = "Size";
-  const firstOption = finalVariants[0]?.option1?.toLowerCase() || "";
-  if (firstOption.includes("color") || firstOption.includes("red") || firstOption.includes("blue") || firstOption.includes("black") || firstOption.includes("white") || firstOption.includes("pink")) {
+  let optionTitle = "Style";
+  const allOptions = finalVariants.map(v => v.option1.toLowerCase()).join(" ");
+  if (/\b(xs|s|m|l|xl|xxl|small|medium|large)\b/.test(allOptions)) {
+    optionTitle = "Size";
+  } else if (/\b(red|blue|black|white|pink|green|grey|gray|brown|yellow|purple)\b/.test(allOptions)) {
     optionTitle = "Color";
-  } else if (firstOption.includes("style") || firstOption.includes("type") || firstOption.includes("pattern")) {
-    optionTitle = "Style";
   }
 
   // Create product WITHOUT images first (images added after)
