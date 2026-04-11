@@ -258,17 +258,59 @@ async function createShopifyProduct(product, selection) {
   const seenOptions = new Map(); // track option name occurrences
 
   if (details?.variants && details.variants.length > 0) {
+    // Log first variant's full structure to debug field names
+    console.log("  DEBUG first CJ variant keys:", Object.keys(details.variants[0]).join(", "));
+    console.log("  DEBUG first CJ variant sample:", JSON.stringify(details.variants[0]).substring(0, 500));
+
     for (const v of details.variants) {
       const vPrice = parseFloat(String(v.variantSellPrice || v.sellPrice || cjPrice).replace(/[^0-9.]/g, "")) || cjPrice;
 
-      // Build a unique option name from all available variant info
+      // Build a unique option name from ALL available variant info
+      // CJ uses many different field names across products
       let optionParts = [];
-      if (v.variantNameEn || v.variantName) optionParts.push(v.variantNameEn || v.variantName);
-      if (v.variantProperty) optionParts.push(v.variantProperty);
-      if (v.variantColor) optionParts.push(v.variantColor);
-      if (v.variantSize) optionParts.push(v.variantSize);
 
-      let optionName = optionParts.length > 0 ? optionParts.join(" / ") : "Default";
+      // Check all known CJ variant name fields
+      const nameFields = [
+        v.variantNameEn, v.variantName, v.variantStandard,
+        v.variantUnit, v.variantAttr, v.variantKey
+      ];
+      for (const field of nameFields) {
+        if (field && typeof field === "string" && field.trim() && field.trim().toLowerCase() !== "default") {
+          optionParts.push(field.trim());
+          break; // Only take the first non-empty name
+        }
+      }
+
+      // Add color if available
+      if (v.variantColor && v.variantColor.trim()) optionParts.push(v.variantColor.trim());
+
+      // Add size if available
+      if (v.variantSize && v.variantSize.trim()) optionParts.push(v.variantSize.trim());
+
+      // Add property if available and different from what we already have
+      if (v.variantProperty && v.variantProperty.trim()) {
+        const prop = v.variantProperty.trim();
+        if (!optionParts.some(p => p.includes(prop) || prop.includes(p))) {
+          optionParts.push(prop);
+        }
+      }
+
+      // If still empty, try to build from ANY string fields in the variant object
+      if (optionParts.length === 0) {
+        const skipFields = new Set(["vid", "pid", "variantImage", "variantSku", "variantSellPrice",
+          "sellPrice", "variantWeight", "variantVolume", "variantHeight", "variantLength",
+          "variantWidth", "createTime", "updateTime", "variantKey"]);
+
+        for (const [key, val] of Object.entries(v)) {
+          if (typeof val === "string" && val.trim() && !skipFields.has(key) &&
+              !val.startsWith("http") && val.length < 100) {
+            optionParts.push(val.trim());
+            if (optionParts.length >= 2) break;
+          }
+        }
+      }
+
+      let optionName = optionParts.length > 0 ? optionParts.join(" / ") : `Variant ${variants.length + 1}`;
 
       // Ensure uniqueness — if duplicate, append counter
       const count = seenOptions.get(optionName) || 0;
@@ -287,6 +329,9 @@ async function createShopifyProduct(product, selection) {
         requires_shipping: true
       });
     }
+
+    // Log what variant names we built
+    console.log(`  Variant names: ${variants.map(v => v.option1).join(", ")}`);
   } else {
     variants.push({
       option1: "Default",
@@ -532,8 +577,26 @@ async function main() {
 
   console.log(`\n=== Import Complete: ${imported}/${selections.length} products added as DRAFT ===`);
   console.log("Review them in Shopify Admin -> Products -> Drafts");
-  console.log(`\n📊 Google Sheet: https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=0`);
-  console.log(`📊 ProductImports tab: https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`);
+
+  // Verify sheet data was written
+  try {
+    const sheetData = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: "ProductImports!A:B"
+    });
+    const rows = sheetData.data.values || [];
+    console.log(`\n📊 ProductImports sheet has ${rows.length} rows (including header)`);
+    if (rows.length > 1) {
+      console.log(`📊 Latest entry: ${rows[rows.length - 1][0]} - ${rows[rows.length - 1][1]}`);
+    }
+  } catch (verifyErr) {
+    console.warn(`⚠️ Could not verify sheet data: ${verifyErr.message}`);
+  }
+
+  // GitHub Actions masks secrets in logs — print sheet URL in a way that won't be masked
+  console.log(`\n📊 Go to Google Sheets → look for the "ProductImports" tab`);
+  console.log(`📊 Direct link: https://docs.google.com/spreadsheets/d/` + SPREADSHEET_ID + `/edit`);
+  console.log(`📊 (Note: If the link above shows *** GitHub Actions is masking the secret. Copy the GOOGLE_SHEET_ID from your GitHub Secrets and open: https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit)`);
 }
 
 main().catch(err => {
