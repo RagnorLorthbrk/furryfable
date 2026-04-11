@@ -235,8 +235,8 @@ async function createShopifyProduct(product, selection) {
   console.log(`  Generating description for: ${selection.seoTitle}`);
   const description = await generateProductDescription(product, selection.seoTitle, selection.collection);
 
-  // Get full product details for variants and images
-  const details = await getProductDetails(product.pid);
+  // Get full product details for variants and images (use cached if available)
+  const details = product._cachedDetails || await getProductDetails(product.pid);
 
   // Build images array
   // Collect image URLs for later upload
@@ -260,57 +260,115 @@ async function createShopifyProduct(product, selection) {
   if (details?.variants && details.variants.length > 0) {
     // Log first variant's full structure to debug field names
     console.log("  DEBUG first CJ variant keys:", Object.keys(details.variants[0]).join(", "));
-    console.log("  DEBUG first CJ variant sample:", JSON.stringify(details.variants[0]).substring(0, 500));
+    console.log("  DEBUG first CJ variant data:", JSON.stringify(details.variants[0]).substring(0, 600));
+    if (details.variants.length > 1) {
+      console.log("  DEBUG second CJ variant data:", JSON.stringify(details.variants[1]).substring(0, 600));
+    }
+
+    // Helper: check if a string is just dimension data like "long=880,width=130,height=76"
+    const isDimensionString = (s) => /^(long|width|height|length|weight|size)=/i.test(s);
+
+    // Helper: parse dimension string to readable format
+    const parseDimensions = (s) => {
+      const parts = s.split(",").map(p => {
+        const [key, val] = p.split("=");
+        if (!val) return p;
+        const mm = parseFloat(val);
+        if (isNaN(mm)) return `${key}: ${val}`;
+        // Convert mm to cm for readability
+        return mm >= 10 ? `${(mm / 10).toFixed(0)}cm` : `${mm}mm`;
+      });
+      return parts.join(" × ");
+    };
+
+    // Helper: extract color from variant image URL
+    const extractColorFromImage = (imgUrl) => {
+      if (!imgUrl) return null;
+      const colors = ["red", "blue", "black", "white", "pink", "green", "grey", "gray",
+        "brown", "yellow", "purple", "orange", "beige", "navy", "khaki", "coffee",
+        "wine", "camel", "apricot", "ivory", "cream", "teal", "coral", "mint",
+        "lavender", "olive", "burgundy", "charcoal", "tan", "gold", "silver"];
+      const urlLower = imgUrl.toLowerCase();
+      for (const color of colors) {
+        if (urlLower.includes(color)) return color.charAt(0).toUpperCase() + color.slice(1);
+      }
+      return null;
+    };
+
+    // First pass: analyze what differentiates variants
+    const allProperties = details.variants.map(v => v.variantProperty || "");
+    const allNames = details.variants.map(v => v.variantNameEn || v.variantName || "");
+    const allSame = (arr) => arr.every(x => x === arr[0]);
+
+    // If all properties are the same dimension string, they're useless for differentiation
+    const propertiesAreDimensions = allProperties.length > 0 && allProperties.every(p => isDimensionString(p));
+    const propertiesAllSame = allSame(allProperties);
 
     for (const v of details.variants) {
       const vPrice = parseFloat(String(v.variantSellPrice || v.sellPrice || cjPrice).replace(/[^0-9.]/g, "")) || cjPrice;
 
-      // Build a unique option name from ALL available variant info
-      // CJ uses many different field names across products
       let optionParts = [];
 
-      // Check all known CJ variant name fields
-      const nameFields = [
-        v.variantNameEn, v.variantName, v.variantStandard,
-        v.variantUnit, v.variantAttr, v.variantKey
-      ];
-      for (const field of nameFields) {
-        if (field && typeof field === "string" && field.trim() && field.trim().toLowerCase() !== "default") {
-          optionParts.push(field.trim());
-          break; // Only take the first non-empty name
-        }
+      // 1. Try explicit color field first
+      if (v.variantColor && v.variantColor.trim()) {
+        optionParts.push(v.variantColor.trim());
       }
 
-      // Add color if available
-      if (v.variantColor && v.variantColor.trim()) optionParts.push(v.variantColor.trim());
-
-      // Add size if available
-      if (v.variantSize && v.variantSize.trim()) optionParts.push(v.variantSize.trim());
-
-      // Add property if available and different from what we already have
-      if (v.variantProperty && v.variantProperty.trim()) {
-        const prop = v.variantProperty.trim();
-        if (!optionParts.some(p => p.includes(prop) || prop.includes(p))) {
-          optionParts.push(prop);
-        }
+      // 2. Try explicit size field
+      if (v.variantSize && v.variantSize.trim()) {
+        optionParts.push(v.variantSize.trim());
       }
 
-      // If still empty, try to build from ANY string fields in the variant object
+      // 3. Try name fields (skip if it's just "Default" or same for all variants)
       if (optionParts.length === 0) {
-        const skipFields = new Set(["vid", "pid", "variantImage", "variantSku", "variantSellPrice",
-          "sellPrice", "variantWeight", "variantVolume", "variantHeight", "variantLength",
-          "variantWidth", "createTime", "updateTime", "variantKey"]);
+        const name = (v.variantNameEn || v.variantName || "").trim();
+        if (name && name.toLowerCase() !== "default" && (!allSame(allNames) || allNames.length === 1)) {
+          optionParts.push(name);
+        }
+      }
 
-        for (const [key, val] of Object.entries(v)) {
-          if (typeof val === "string" && val.trim() && !skipFields.has(key) &&
-              !val.startsWith("http") && val.length < 100) {
-            optionParts.push(val.trim());
-            if (optionParts.length >= 2) break;
+      // 4. Try property field — but only if NOT dimension-only data, and varies between variants
+      if (optionParts.length === 0 && v.variantProperty && v.variantProperty.trim()) {
+        const prop = v.variantProperty.trim();
+        if (!isDimensionString(prop)) {
+          optionParts.push(prop);
+        } else if (!propertiesAllSame) {
+          // Dimensions differ between variants — convert to readable format
+          optionParts.push(parseDimensions(prop));
+        }
+        // If dimensions are all the same, skip them entirely
+      }
+
+      // 5. Try variantStandard, variantAttr, variantUnit
+      if (optionParts.length === 0) {
+        for (const field of [v.variantStandard, v.variantAttr, v.variantUnit]) {
+          if (field && typeof field === "string" && field.trim() && !isDimensionString(field.trim())) {
+            optionParts.push(field.trim());
+            break;
           }
         }
       }
 
-      let optionName = optionParts.length > 0 ? optionParts.join(" / ") : `Variant ${variants.length + 1}`;
+      // 6. Try to extract color from variant image URL
+      if (optionParts.length === 0 && v.variantImage) {
+        const colorFromImg = extractColorFromImage(v.variantImage);
+        if (colorFromImg) {
+          optionParts.push(colorFromImg);
+        }
+      }
+
+      // 7. Last resort: use SKU suffix or variant index
+      if (optionParts.length === 0) {
+        const sku = v.variantSku || "";
+        const skuSuffix = sku.split("-").pop() || sku.split("_").pop() || "";
+        if (skuSuffix && skuSuffix.length < 20 && skuSuffix !== sku) {
+          optionParts.push(`Style ${skuSuffix}`);
+        } else {
+          optionParts.push(`Style ${variants.length + 1}`);
+        }
+      }
+
+      let optionName = optionParts.join(" / ");
 
       // Ensure uniqueness — if duplicate, append counter
       const count = seenOptions.get(optionName) || 0;
@@ -536,9 +594,40 @@ async function main() {
     return;
   }
 
-  // AI selects the best 5 products
-  console.log("\nAI selecting best products...");
-  const selections = await selectBestProducts(cjProducts, existingTitles);
+  // Pre-validate products: check they actually exist on CJ with details
+  // Only validate top candidates (by price range) to save API calls
+  const candidates = cjProducts.filter(p => {
+    const price = parseFloat(p.sellPrice || 0);
+    return price >= 1 && price <= 30 && p.productNameEn;
+  }).slice(0, 40); // Check top 40, AI will pick 5
+
+  console.log(`\nValidating ${candidates.length} candidate products with CJ...`);
+  const validProducts = [];
+  for (const p of candidates) {
+    try {
+      const details = await getProductDetails(p.pid);
+      if (details && details.productImage && details.productNameEn) {
+        // Product exists and has images — it's live
+        p._cachedDetails = details; // Cache so we don't call again during import
+        validProducts.push(p);
+      } else {
+        console.log(`  ❌ Removed/unavailable: ${p.productNameEn} (pid: ${p.pid})`);
+      }
+      await new Promise(r => setTimeout(r, 300)); // Rate limit
+    } catch (err) {
+      console.log(`  ❌ Cannot verify: ${p.productNameEn} — ${err.message}`);
+    }
+  }
+  console.log(`${validProducts.length}/${candidates.length} products validated as available\n`);
+
+  if (validProducts.length === 0) {
+    console.log("No valid products found. Exiting.");
+    return;
+  }
+
+  // AI selects the best 5 products (only from validated ones)
+  console.log("AI selecting best products...");
+  const selections = await selectBestProducts(validProducts, existingTitles);
   console.log(`Selected ${selections.length} products\n`);
 
   // Create each product on Shopify
