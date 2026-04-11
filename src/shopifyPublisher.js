@@ -18,7 +18,7 @@ export async function publishToShopify({ title, html, slug, imagePath, metadata 
     body_html: html,
     summary_html: metadata.excerpt || "",
     tags: metadata.tags ? metadata.tags.join(", ") : "",
-    author: "Ragnor lrthbrk", // Set as your profile name
+    author: "FurryFable Team",
     handle: slug,
     published: true
   };
