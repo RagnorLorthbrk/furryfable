@@ -12,7 +12,13 @@ jobs:
         with:
           node-version: "20"
       - run: npm ci
-      - run: node src/cleanupBadDrafts.js
+      - name: Delete bad draft products
+        run: node src/cleanupBadDrafts.js
         env:
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+      - name: Clear ProductImports sheet
+        run: node src/clearProductSheet.js
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
