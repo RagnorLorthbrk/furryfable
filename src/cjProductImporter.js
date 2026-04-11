@@ -239,26 +239,28 @@ async function createShopifyProduct(product, selection) {
   const details = await getProductDetails(product.pid);
 
   // Build images array
-  const images = [];
+  // Collect image URLs for later upload
+  const imageUrls = [];
   if (details?.productImage) {
-    images.push({ src: details.productImage, alt: selection.seoTitle });
+    imageUrls.push(details.productImage);
   }
   if (details?.productImageSet) {
     for (const img of details.productImageSet.slice(0, 9)) {
-      if (img && !images.find(i => i.src === img)) {
-        images.push({ src: img, alt: selection.seoTitle });
+      if (img && !imageUrls.includes(img)) {
+        imageUrls.push(img);
       }
     }
   }
 
   // Build variants from CJ product
+  // Shopify requires option1 (not title) for variants
   const variants = [];
   if (details?.variants && details.variants.length > 0) {
     for (const v of details.variants) {
       const vPrice = parseFloat(String(v.variantSellPrice || v.sellPrice || cjPrice).replace(/[^0-9.]/g, "")) || cjPrice;
-      const variantTitle = (v.variantNameEn || v.variantName || "Default").substring(0, 255);
+      const optionName = (v.variantNameEn || v.variantName || "Default").substring(0, 255);
       variants.push({
-        title: variantTitle,
+        option1: optionName,
         price: (vPrice * 2).toFixed(2),
         compare_at_price: (vPrice * 3).toFixed(2),
         sku: (v.variantSku || `FF-${product.pid}-${v.vid || "DEF"}`).substring(0, 255),
@@ -269,7 +271,7 @@ async function createShopifyProduct(product, selection) {
     }
   } else {
     variants.push({
-      title: "Default",
+      option1: "Default",
       price: storePrice,
       compare_at_price: compareAtPrice,
       sku: `FF-${product.pid}`,
@@ -282,6 +284,16 @@ async function createShopifyProduct(product, selection) {
   // Limit to 100 variants (Shopify max)
   const finalVariants = variants.slice(0, 100);
 
+  // Determine option name based on variant names
+  let optionTitle = "Size";
+  const firstOption = finalVariants[0]?.option1?.toLowerCase() || "";
+  if (firstOption.includes("color") || firstOption.includes("red") || firstOption.includes("blue") || firstOption.includes("black") || firstOption.includes("white") || firstOption.includes("pink")) {
+    optionTitle = "Color";
+  } else if (firstOption.includes("style") || firstOption.includes("type") || firstOption.includes("pattern")) {
+    optionTitle = "Style";
+  }
+
+  // Create product WITHOUT images first (images added after)
   const productData = {
     product: {
       title: selection.seoTitle.substring(0, 255),
@@ -290,17 +302,27 @@ async function createShopifyProduct(product, selection) {
       product_type: selection.collection.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
       tags: selection.tags.join(", "),
       status: "draft",
+      options: [{ name: optionTitle }],
       variants: finalVariants
     }
   };
 
-  // Add images separately — if they fail, product still gets created
-  if (images.length > 0) {
-    productData.product.images = images.slice(0, 10);
-  }
-
   const res = await shopify.post("/products.json", productData);
   const newProduct = res.data.product;
+
+  // Upload images one by one (CJ URLs may need individual handling)
+  for (const imgUrl of imageUrls.slice(0, 10)) {
+    try {
+      await shopify.post(`/products/${newProduct.id}/images.json`, {
+        image: {
+          src: imgUrl,
+          alt: selection.seoTitle
+        }
+      });
+    } catch (imgErr) {
+      console.warn(`  Image upload failed for ${imgUrl.substring(0, 50)}...: ${imgErr.message}`);
+    }
+  }
 
   // Add to collection
   const collectionId = COLLECTION_MAP[selection.collection];
