@@ -226,7 +226,9 @@ Do NOT mention CJ Dropshipping, China, or any supplier.
 // CREATE PRODUCT ON SHOPIFY (DRAFT)
 // ═══════════════════════════════════════
 async function createShopifyProduct(product, selection) {
-  const cjPrice = parseFloat(product.sellPrice);
+  // Parse price — CJ sometimes returns ranges like "15.88 -- 21.25"
+  const priceStr = String(product.sellPrice || "0");
+  const cjPrice = parseFloat(priceStr.replace(/[^0-9.]/g, "")) || 0;
   const storePrice = (cjPrice * 2).toFixed(2);
   const compareAtPrice = (cjPrice * 3).toFixed(2); // 3x for "Save 33%" badge
 
@@ -253,14 +255,14 @@ async function createShopifyProduct(product, selection) {
   const variants = [];
   if (details?.variants && details.variants.length > 0) {
     for (const v of details.variants) {
-      const vPrice = parseFloat(v.variantSellPrice || cjPrice);
+      const vPrice = parseFloat(String(v.variantSellPrice || v.sellPrice || cjPrice).replace(/[^0-9.]/g, "")) || cjPrice;
+      const variantTitle = (v.variantNameEn || v.variantName || "Default").substring(0, 255);
       variants.push({
-        title: v.variantNameEn || v.variantName || "Default",
+        title: variantTitle,
         price: (vPrice * 2).toFixed(2),
         compare_at_price: (vPrice * 3).toFixed(2),
-        sku: v.variantSku || `FF-${product.pid}-${v.vid || "DEF"}`,
-        inventory_management: null, // Don't track inventory (dropship)
-        weight: v.variantWeight || 0.5,
+        sku: (v.variantSku || `FF-${product.pid}-${v.vid || "DEF"}`).substring(0, 255),
+        weight: parseFloat(v.variantWeight) || 0.5,
         weight_unit: "kg",
         requires_shipping: true
       });
@@ -271,25 +273,31 @@ async function createShopifyProduct(product, selection) {
       price: storePrice,
       compare_at_price: compareAtPrice,
       sku: `FF-${product.pid}`,
-      inventory_management: null,
       weight: 0.5,
       weight_unit: "kg",
       requires_shipping: true
     });
   }
 
+  // Limit to 100 variants (Shopify max)
+  const finalVariants = variants.slice(0, 100);
+
   const productData = {
     product: {
-      title: selection.seoTitle,
+      title: selection.seoTitle.substring(0, 255),
       body_html: description,
       vendor: "FurryFable",
       product_type: selection.collection.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
       tags: selection.tags.join(", "),
-      status: "draft", // Draft mode — review before publishing
-      images: images,
-      variants: variants
+      status: "draft",
+      variants: finalVariants
     }
   };
+
+  // Add images separately — if they fail, product still gets created
+  if (images.length > 0) {
+    productData.product.images = images.slice(0, 10);
+  }
 
   const res = await shopify.post("/products.json", productData);
   const newProduct = res.data.product;
@@ -438,6 +446,10 @@ async function main() {
       await new Promise(r => setTimeout(r, 2000));
     } catch (err) {
       console.error(`  FAILED: ${err.message}`);
+      if (err.response) {
+        console.error(`  Status: ${err.response.status}`);
+        console.error(`  Shopify says: ${JSON.stringify(err.response.data)}`);
+      }
     }
   }
 
