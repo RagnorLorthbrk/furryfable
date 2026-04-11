@@ -1,0 +1,34 @@
+name: CJ Product Importer
+
+on:
+  schedule:
+    - cron: "0 6 * * 3"   # Every Wednesday at 6:00 AM UTC
+  workflow_dispatch:
+
+jobs:
+  import-products:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Import products from CJ Dropshipping
+        run: node src/cjProductImporter.js
+        env:
+          CJ_API_KEY: ${{ secrets.CJ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
