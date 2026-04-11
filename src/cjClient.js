@@ -55,35 +55,71 @@ async function cjCallWithRetry(fn, retries = 2) {
 }
 
 /**
- * Search CJ products using the V2 endpoint (Elasticsearch-powered)
- * Key filters:
- *   - countryCode=US → only USA warehouse products
- *   - startWarehouseInventory=1 → only IN-STOCK products
- *   - verifiedWarehouse=1 → only verified warehouses (reliable stock)
- *   - orderBy=3, sort=desc → newest first
+ * Search CJ products using V2 endpoint with progressive filter relaxation
+ * Tries strict filters first, relaxes if no results found
  */
 export async function searchProductsV2(keyword, page = 1, size = 20) {
-  const res = await cjCallWithRetry(() =>
-    cj.get("/product/listV2", {
-      params: {
-        keyWord: keyword,
-        page: page,
-        size: size,
-        countryCode: "US",
-        startWarehouseInventory: 1,  // Must have stock
-        verifiedWarehouse: 1,        // Verified warehouse only
-        orderBy: 3,                  // Sort by create time
-        sort: "desc"                 // Newest first
-      }
-    })
-  );
+  // Try multiple filter levels — strict to relaxed
+  const filterLevels = [
+    { // Level 1: US warehouse, in-stock, verified
+      countryCode: "US", startWarehouseInventory: 1, verifiedWarehouse: 1
+    },
+    { // Level 2: US warehouse, in-stock (any warehouse)
+      countryCode: "US", startWarehouseInventory: 1
+    },
+    { // Level 3: US warehouse only (no stock filter)
+      countryCode: "US"
+    }
+  ];
 
-  if (!res.data.result) {
-    console.warn(`CJ search failed for "${keyword}":`, res.data.message);
-    return [];
+  for (let i = 0; i < filterLevels.length; i++) {
+    try {
+      const res = await cjCallWithRetry(() =>
+        cj.get("/product/listV2", {
+          params: {
+            keyWord: keyword,
+            page: page,
+            size: size,
+            orderBy: 3,    // Sort by create time
+            sort: "desc",  // Newest first
+            ...filterLevels[i]
+          }
+        })
+      );
+
+      if (res.data.result) {
+        const list = res.data.data?.list || [];
+        if (list.length > 0) {
+          if (i > 0) console.log(`    (used filter level ${i + 1})`);
+          return list;
+        }
+      }
+    } catch (err) {
+      if (err.response?.status === 429) throw err;
+    }
   }
 
-  return res.data.data?.list || [];
+  // Final fallback: legacy endpoint
+  try {
+    const res = await cjCallWithRetry(() =>
+      cj.get("/product/list", {
+        params: {
+          productNameEn: keyword,
+          pageNum: page,
+          pageSize: size,
+          countryCode: "US"
+        }
+      })
+    );
+
+    if (res.data.result) {
+      return res.data.data?.list || [];
+    }
+  } catch (err) {
+    // ignore
+  }
+
+  return [];
 }
 
 /**
