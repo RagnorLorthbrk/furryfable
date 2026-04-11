@@ -398,31 +398,44 @@ async function createShopifyProduct(product, selection) {
 // ═══════════════════════════════════════
 async function ensureProductSheet() {
   try {
-    await sheets.spreadsheets.values.get({
+    const existing = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: "ProductImports!A1"
     });
-  } catch {
-    // Create the sheet
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
-      requestBody: {
-        requests: [{ addSheet: { properties: { title: "ProductImports" } } }]
-      }
-    });
+    console.log("ProductImports sheet exists:", existing.data?.values?.[0]?.[0] || "(empty)");
+  } catch (err) {
+    console.log("ProductImports sheet not found, creating...", err.message);
+    try {
+      // Create the sheet
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: SPREADSHEET_ID,
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: "ProductImports" } } }]
+        }
+      });
+      console.log("ProductImports sheet created");
+    } catch (createErr) {
+      // Sheet might already exist with a different case or issue
+      console.warn("Could not create ProductImports sheet:", createErr.message);
+    }
 
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
-      range: "ProductImports!A1:L1",
-      valueInputOption: "RAW",
-      requestBody: {
-        values: [[
-          "Date", "CJ PID", "CJ Product Name", "CJ Price",
-          "Store Title", "Store Price", "Compare At Price",
-          "Collection", "Status", "CJ Link", "Store Link", "Selection Reason"
-        ]]
-      }
-    });
+    try {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: "ProductImports!A1:L1",
+        valueInputOption: "RAW",
+        requestBody: {
+          values: [[
+            "Date", "CJ PID", "CJ Product Name", "CJ Price",
+            "Store Title", "Store Price", "Compare At Price",
+            "Collection", "Status", "CJ Link", "Store Link", "Selection Reason"
+          ]]
+        }
+      });
+      console.log("ProductImports headers written");
+    } catch (headerErr) {
+      console.warn("Could not write headers:", headerErr.message);
+    }
   }
 }
 
@@ -493,7 +506,13 @@ async function main() {
       console.log(`  Reason: ${sel.reason}`);
 
       const shopifyProduct = await createShopifyProduct(sel.product, sel);
-      await logProductToSheet(sel.product, sel, shopifyProduct);
+
+      try {
+        await logProductToSheet(sel.product, sel, shopifyProduct);
+        console.log(`  📊 Logged to Google Sheets`);
+      } catch (sheetErr) {
+        console.warn(`  ⚠️ Sheet logging failed: ${sheetErr.message}`);
+      }
 
       console.log(`  Created as DRAFT: ${shopifyProduct.handle}`);
       console.log(`  Admin: https://admin.shopify.com/store/${SHOPIFY_STORE_DOMAIN.split('.')[0]}/products/${shopifyProduct.id}`);
@@ -513,6 +532,8 @@ async function main() {
 
   console.log(`\n=== Import Complete: ${imported}/${selections.length} products added as DRAFT ===`);
   console.log("Review them in Shopify Admin -> Products -> Drafts");
+  console.log(`\n📊 Google Sheet: https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=0`);
+  console.log(`📊 ProductImports tab: https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`);
 }
 
 main().catch(err => {
