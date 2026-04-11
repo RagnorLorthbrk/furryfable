@@ -5,6 +5,7 @@ import { generateImages } from "./imageGenerator.js";
 import { publishToShopify } from "./shopifyPublisher.js";
 import { generateNewTopic } from "./topicGenerator.js";
 import { generateMetadata } from "./metadataGenerator.js";
+import { requestIndexing, pingSitemap } from "./googleIndexer.js";
 
 console.log("🚀 Blog automation started (SEO + GEO Optimized)");
 
@@ -54,7 +55,13 @@ try {
   });
 
   console.log(`✅ Published: ${result.adminUrl}`);
-  console.log(`🌐 Live URL: https://www.furryfable.com/blogs/blog/${slug}`);
+  const liveUrl = `https://www.furryfable.com/blogs/blog/${slug}`;
+  console.log(`🌐 Live URL: ${liveUrl}`);
+
+  // Ping Google & Bing to index the new blog post immediately
+  console.log("🔍 Requesting Google indexing...");
+  await requestIndexing(liveUrl);
+  await pingSitemap();
 
 } catch (err) {
   console.error("❌ FATAL ERROR:", err.message);

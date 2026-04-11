@@ -99,9 +99,9 @@ PRODUCT CATALOG (topics MUST lead to these products):
 - Cat: cat towers, scratching boards, teaser toys, electric fish toys, litter mats
 
 ACTIVE CHANNELS:
-- Blog: 1/day to Shopify (SEO + GEO)
+- Blog: 1/day to Shopify (SEO + GEO optimized, auto-indexed on Google & Bing)
 - Social: 3 posts/day to Facebook, Instagram, Pinterest
-- Quora: 2 answers/day (GEO optimization)
+- Google Search Console: integrated for keyword tracking
 
 GOAL: Scale from current performance to 100 organic sales/month in 3 months.
 
