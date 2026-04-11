@@ -36,16 +36,16 @@ export async function getAccessToken() {
 }
 
 /**
- * Make a CJ API call with automatic 429 retry
+ * CJ API call with 429 retry
  */
-async function cjCallWithRetry(fn, retries = 2) {
+async function cjCall(fn, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (err) {
       if (err.response?.status === 429 && attempt < retries) {
         const wait = (attempt + 1) * 10;
-        console.log(`  ⏳ Rate limited (429). Waiting ${wait}s before retry...`);
+        console.log(`    ⏳ Rate limited. Waiting ${wait}s...`);
         await new Promise(r => setTimeout(r, wait * 1000));
       } else {
         throw err;
@@ -55,68 +55,17 @@ async function cjCallWithRetry(fn, retries = 2) {
 }
 
 /**
- * Search CJ products — tries V2 with progressive filters, then legacy fallback
- */
-async function searchProducts(keyword, page = 1, size = 20) {
-  // Try V2 with different filter levels
-  const filterLevels = [
-    { countryCode: "US", startWarehouseInventory: 1, verifiedWarehouse: 1 },
-    { countryCode: "US", startWarehouseInventory: 1 },
-    { countryCode: "US" }
-  ];
-
-  for (let i = 0; i < filterLevels.length; i++) {
-    try {
-      const res = await cjCallWithRetry(() =>
-        cj.get("/product/listV2", {
-          params: {
-            keyWord: keyword, page, size,
-            orderBy: 3, sort: "desc",
-            ...filterLevels[i]
-          }
-        })
-      );
-      if (res.data.result) {
-        const list = res.data.data?.list || [];
-        if (list.length > 0) {
-          if (i > 0) console.log(`    (filter level ${i + 1})`);
-          return list;
-        }
-      }
-    } catch (err) {
-      if (err.response?.status === 429) throw err;
-    }
-  }
-
-  // Legacy fallback
-  try {
-    const res = await cjCallWithRetry(() =>
-      cj.get("/product/list", {
-        params: { productNameEn: keyword, pageNum: page, pageSize: size, countryCode: "US" }
-      })
-    );
-    if (res.data.result) {
-      const list = res.data.data?.list || [];
-      if (list.length > 0) {
-        console.log(`    (legacy endpoint)`);
-        return list;
-      }
-    }
-  } catch (err) { /* ignore */ }
-
-  return [];
-}
-
-/**
- * Get full product details with retry
+ * Get full product details (variants, images, etc.)
+ * Use features=enable_inventory to get stock data inline
  */
 export async function getProductDetails(pid) {
-  const res = await cjCallWithRetry(() =>
-    cj.get("/product/query", { params: { pid } })
+  const res = await cjCall(() =>
+    cj.get("/product/query", {
+      params: { pid, countryCode: "US", features: "enable_inventory" }
+    })
   );
 
   if (!res.data.result) {
-    console.warn(`CJ product detail failed for ${pid}:`, res.data.message);
     return null;
   }
 
@@ -124,42 +73,142 @@ export async function getProductDetails(pid) {
 }
 
 /**
- * Check if a CJ product is actually available (not removed)
- * Hits the actual CJ product webpage to verify
+ * Check US warehouse inventory for a product
+ * Returns total US stock count, or 0 if no US stock
  */
-export async function isProductAvailable(pid) {
+export async function getUSInventory(pid) {
   try {
-    const response = await axios.get(`https://cjdropshipping.com/product/${pid}`, {
-      timeout: 10000,
-      maxRedirects: 5,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      },
-      validateStatus: () => true
-    });
+    const res = await cjCall(() =>
+      cj.get("/product/stock/getInventoryByPid", { params: { pid } })
+    );
 
-    const html = typeof response.data === "string" ? response.data : "";
+    if (!res.data.result && !res.data.success) return 0;
 
-    // Check for "Product removed" message
-    if (html.includes("Product removed") || html.includes("product removed") ||
-        html.includes("Product Removed") || html.includes("sourcing request")) {
-      return false;
+    const data = res.data.data;
+    if (!data) return 0;
+
+    // Check top-level inventories for US warehouse
+    const inventories = data.inventories || [];
+    let usStock = 0;
+
+    for (const inv of inventories) {
+      if (inv.countryCode === "US") {
+        usStock += (inv.totalInventoryNum || 0);
+      }
     }
 
-    if (response.status === 404 || response.status >= 500) {
-      return false;
+    // Also check variant-level inventories
+    const variantInvs = data.variantInventories || [];
+    for (const vi of variantInvs) {
+      for (const inv of (vi.inventory || [])) {
+        if (inv.countryCode === "US") {
+          usStock = Math.max(usStock, inv.totalInventory || 0);
+        }
+      }
     }
 
-    return true;
+    return usStock;
   } catch (err) {
-    console.log(`    ⚠️ Could not check CJ page: ${err.message}`);
-    return false; // If we can't verify, skip it — safer
+    console.log(`    ⚠️ Inventory check failed: ${err.message}`);
+    return -1; // Unknown — don't reject
   }
 }
 
 /**
- * MAIN SEARCH: Find pet products, validate each, return only AVAILABLE ones
- * Flow: Search CJ → Check each product's webpage → Return only live products
+ * Get variant details with proper names (variantKey has "Color-Size" format)
+ */
+export async function getVariants(pid) {
+  try {
+    const res = await cjCall(() =>
+      cj.get("/product/variant/query", {
+        params: { pid, countryCode: "US" }
+      })
+    );
+
+    if (!res.data.result) return [];
+    return res.data.data || [];
+  } catch (err) {
+    return [];
+  }
+}
+
+/**
+ * Search products using V1 endpoint with inventory filter
+ * V1 has startInventory param to only return in-stock products
+ */
+async function searchV1(keyword, page = 1, pageSize = 20) {
+  const res = await cjCall(() =>
+    cj.get("/product/list", {
+      params: {
+        productNameEn: keyword,
+        pageNum: page,
+        pageSize: pageSize,
+        countryCode: "US",
+        startInventory: 1,       // Only products with stock >= 1
+        verifiedWarehouse: 1,    // Verified warehouses only
+        sort: "desc",
+        orderBy: "listedNum"     // Sort by popularity
+      }
+    })
+  );
+
+  if (!res.data.result) return [];
+  return res.data.data?.list || [];
+}
+
+/**
+ * Search products using V2 endpoint
+ */
+async function searchV2(keyword, page = 1, size = 20) {
+  const res = await cjCall(() =>
+    cj.get("/product/listV2", {
+      params: {
+        keyWord: keyword,
+        page: page,
+        size: size,
+        countryCode: "US",
+        orderBy: 4,    // Sort by INVENTORY (most stock first)
+        sort: "desc"
+      }
+    })
+  );
+
+  if (!res.data.result) return [];
+  return res.data.data?.list || [];
+}
+
+/**
+ * Search with both endpoints, merge results
+ */
+async function searchProducts(keyword) {
+  let results = [];
+
+  // Try V1 first (has startInventory filter)
+  try {
+    results = await searchV1(keyword, 1, 15);
+    if (results.length > 0) return results;
+  } catch (err) {
+    if (err.response?.status === 429) throw err;
+  }
+
+  // Fallback to V2
+  try {
+    results = await searchV2(keyword, 1, 15);
+  } catch (err) {
+    if (err.response?.status === 429) throw err;
+  }
+
+  return results;
+}
+
+/**
+ * MAIN: Search pet products, verify US inventory, return only available ones
+ *
+ * Flow:
+ * 1. Search CJ across pet categories (V1 with inventory filter)
+ * 2. For each unique product, check US warehouse inventory via API
+ * 3. Get product details (images, variants) for verified products
+ * 4. Return only products with US stock + images + details
  */
 export async function searchPetProducts() {
   await getAccessToken();
@@ -169,30 +218,29 @@ export async function searchPetProducts() {
     "dog harness", "dog leash", "retractable leash",
     "dog clothes", "pet clothes", "dog jacket",
     "pet water fountain", "pet feeder", "dog bowl",
-    "dog carrier", "dog backpack", "pet carrier bag",
-    "cat scratching post", "cat tree", "cat toy interactive",
-    "dog collar", "pet collar", "airtag collar",
+    "dog carrier", "dog backpack", "pet carrier",
+    "cat scratching post", "cat tree",
+    "dog collar", "pet collar",
     "dog bed", "pet bed", "cat bed",
-    "pet grooming", "dog brush", "pet nail clipper",
+    "pet grooming", "dog brush",
     "dog anxiety vest", "pet puzzle toy", "slow feeder",
-    "pooper scooper", "pet safety", "dog muzzle"
+    "pooper scooper", "pet safety"
   ];
 
   const allProducts = [];
   const seenIds = new Set();
 
-  // STEP 1: Search across all categories
-  console.log("  Step 1: Searching CJ across categories...");
+  // STEP 1: Search across categories
+  console.log("  Step 1: Searching CJ product catalog...");
   for (const keyword of categories) {
     try {
-      console.log(`    "${keyword}"...`);
-      const products = await searchProducts(keyword, 1, 15);
+      process.stdout.write(`    "${keyword}"... `);
+      const products = await searchProducts(keyword);
 
       let added = 0;
       for (const p of products) {
         if (!seenIds.has(p.pid)) {
           const price = parseFloat(p.sellPrice || 0);
-          // Basic price filter — only products $1-$30
           if (price >= 1 && price <= 30 && p.productNameEn) {
             seenIds.add(p.pid);
             allProducts.push(p);
@@ -200,11 +248,11 @@ export async function searchPetProducts() {
           }
         }
       }
-      if (added > 0) console.log(`      → ${added} new candidates`);
+      console.log(added > 0 ? `${added} new` : "0 new");
 
       await new Promise(r => setTimeout(r, 2000));
     } catch (err) {
-      console.warn(`    Failed: ${err.message}`);
+      console.log(`failed: ${err.message}`);
       if (err.response?.status === 429) {
         console.log("    Rate limited. Waiting 15s...");
         await new Promise(r => setTimeout(r, 15000));
@@ -212,41 +260,47 @@ export async function searchPetProducts() {
     }
   }
 
-  console.log(`\n  Step 2: Found ${allProducts.length} candidates. Validating availability...`);
+  console.log(`\n  Step 2: Verifying US inventory for ${allProducts.length} candidates...`);
 
-  // STEP 2: Validate each product on CJ website
-  // This is the KEY step — removes discontinued/removed products
+  // STEP 2: Check US inventory via API (NOT webpage scraping)
   const validProducts = [];
 
   for (const p of allProducts) {
     try {
-      process.stdout.write(`    Checking: ${p.productNameEn.substring(0, 50)}... `);
-      const available = await isProductAvailable(p.pid);
+      process.stdout.write(`    ${p.productNameEn.substring(0, 55)}... `);
 
-      if (available) {
-        // Also get details to confirm images exist
-        const details = await getProductDetails(p.pid);
-        if (details && details.productImage) {
-          p._cachedDetails = details;
-          validProducts.push(p);
-          console.log("✅");
-        } else {
-          console.log("❌ no images");
-        }
-      } else {
-        console.log("❌ removed");
+      // Check US warehouse stock
+      const usStock = await getUSInventory(p.pid);
+
+      if (usStock === 0) {
+        console.log("❌ no US stock");
+        await new Promise(r => setTimeout(r, 1500));
+        continue;
       }
 
-      // 3s between checks to avoid rate limits
-      await new Promise(r => setTimeout(r, 3000));
+      // Get full details (images, variants)
+      const details = await getProductDetails(p.pid);
+      if (!details || !details.productImage) {
+        console.log("❌ no images");
+        await new Promise(r => setTimeout(r, 1500));
+        continue;
+      }
 
-      // If we have enough valid products, stop checking (save API calls)
+      // Cache details for later use during import
+      p._cachedDetails = details;
+      p._usStock = usStock;
+      validProducts.push(p);
+      console.log(`✅ (${usStock > 0 ? usStock + " in US" : "available"})`);
+
+      await new Promise(r => setTimeout(r, 1500));
+
+      // Stop after 20 valid products (enough for AI to pick 5)
       if (validProducts.length >= 20) {
-        console.log(`    ✅ Found 20 valid products — enough for selection`);
+        console.log("    Found 20 verified products — enough for selection");
         break;
       }
     } catch (err) {
-      console.log(`❌ error: ${err.message}`);
+      console.log(`⚠️ ${err.message}`);
       if (err.response?.status === 429) {
         console.log("    Rate limited. Waiting 15s...");
         await new Promise(r => setTimeout(r, 15000));
@@ -254,6 +308,6 @@ export async function searchPetProducts() {
     }
   }
 
-  console.log(`\n  Result: ${validProducts.length} verified available products from ${allProducts.length} candidates`);
+  console.log(`\n  Result: ${validProducts.length} products verified with US stock`);
   return validProducts;
 }

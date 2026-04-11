@@ -1,6 +1,6 @@
 import axios from "axios";
 import { google } from "googleapis";
-import { searchPetProducts, getProductDetails, isProductAvailable } from "./cjClient.js";
+import { searchPetProducts, getProductDetails } from "./cjClient.js";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const { SHOPIFY_STORE_DOMAIN, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION = "2026-01" } = process.env;
@@ -259,119 +259,59 @@ async function createShopifyProduct(product, selection) {
   }
 
   // Build variants from CJ product
-  // Shopify requires unique option1 values — deduplicate by appending index
   const variants = [];
-  const seenOptions = new Map(); // track option name occurrences
+  const seenOptions = new Map();
 
   if (details?.variants && details.variants.length > 0) {
-    // Log first variant's full structure to debug field names
-    console.log("  DEBUG first CJ variant keys:", Object.keys(details.variants[0]).join(", "));
-    console.log("  DEBUG first CJ variant data:", JSON.stringify(details.variants[0]).substring(0, 600));
-    if (details.variants.length > 1) {
-      console.log("  DEBUG second CJ variant data:", JSON.stringify(details.variants[1]).substring(0, 600));
-    }
-
-    // Helper: check if a string is just dimension data like "long=880,width=130,height=76"
-    const isDimensionString = (s) => /^(long|width|height|length|weight|size)=/i.test(s);
-
-    // Helper: parse dimension string to readable format
-    const parseDimensions = (s) => {
-      const parts = s.split(",").map(p => {
-        const [key, val] = p.split("=");
-        if (!val) return p;
-        const mm = parseFloat(val);
-        if (isNaN(mm)) return `${key}: ${val}`;
-        // Convert mm to cm for readability
-        return mm >= 10 ? `${(mm / 10).toFixed(0)}cm` : `${mm}mm`;
-      });
-      return parts.join(" × ");
-    };
-
-    // Helper: extract color from variant image URL
-    const extractColorFromImage = (imgUrl) => {
-      if (!imgUrl) return null;
-      const colors = ["red", "blue", "black", "white", "pink", "green", "grey", "gray",
-        "brown", "yellow", "purple", "orange", "beige", "navy", "khaki", "coffee",
-        "wine", "camel", "apricot", "ivory", "cream", "teal", "coral", "mint",
-        "lavender", "olive", "burgundy", "charcoal", "tan", "gold", "silver"];
-      const urlLower = imgUrl.toLowerCase();
-      for (const color of colors) {
-        if (urlLower.includes(color)) return color.charAt(0).toUpperCase() + color.slice(1);
-      }
-      return null;
-    };
-
-    // First pass: analyze what differentiates variants
-    const allProperties = details.variants.map(v => v.variantProperty || "");
-    const allNames = details.variants.map(v => v.variantNameEn || v.variantName || "");
-    const allSame = (arr) => arr.every(x => x === arr[0]);
-
-    // If all properties are the same dimension string, they're useless for differentiation
-    const propertiesAreDimensions = allProperties.length > 0 && allProperties.every(p => isDimensionString(p));
-    const propertiesAllSame = allSame(allProperties);
+    // Log first variant for debugging
+    console.log("  First variant:", JSON.stringify(details.variants[0]).substring(0, 500));
 
     for (const v of details.variants) {
       const vPrice = parseFloat(String(v.variantSellPrice || v.sellPrice || cjPrice).replace(/[^0-9.]/g, "")) || cjPrice;
 
-      let optionParts = [];
+      // PRIORITY ORDER for variant name:
+      // 1. variantKey (CJ's definitive "Color-Size" field, e.g. "Black-XXL")
+      // 2. variantNameEn (English name, e.g. "Baby pacifier chain Grey")
+      // 3. variantSku suffix (e.g. "CJJSBGDY00002-Grey" → "Grey")
+      // 4. Numbered fallback
 
-      // 1. Try explicit color field first
-      if (v.variantColor && v.variantColor.trim()) {
-        optionParts.push(v.variantColor.trim());
+      let optionName = "";
+
+      // 1. variantKey — best source, has "Color-Size" format
+      if (v.variantKey && v.variantKey.trim()) {
+        // Convert "Black-XXL" to "Black / XXL" for readability
+        optionName = v.variantKey.trim().replace(/-/g, " / ");
       }
 
-      // 2. Try explicit size field
-      if (v.variantSize && v.variantSize.trim()) {
-        optionParts.push(v.variantSize.trim());
+      // 2. variantNameEn
+      if (!optionName && v.variantNameEn && v.variantNameEn.trim()) {
+        optionName = v.variantNameEn.trim();
       }
 
-      // 3. Try name fields (skip if it's just "Default" or same for all variants)
-      if (optionParts.length === 0) {
-        const name = (v.variantNameEn || v.variantName || "").trim();
-        if (name && name.toLowerCase() !== "default" && (!allSame(allNames) || allNames.length === 1)) {
-          optionParts.push(name);
+      // 3. Combine explicit color + size fields
+      if (!optionName) {
+        const parts = [];
+        if (v.variantColor && v.variantColor.trim()) parts.push(v.variantColor.trim());
+        if (v.variantSize && v.variantSize.trim()) parts.push(v.variantSize.trim());
+        if (v.variantProperty && v.variantProperty.trim() &&
+            !/^(long|width|height|length)=/i.test(v.variantProperty)) {
+          parts.push(v.variantProperty.trim());
+        }
+        if (parts.length > 0) optionName = parts.join(" / ");
+      }
+
+      // 4. Extract from SKU
+      if (!optionName && v.variantSku) {
+        const skuParts = v.variantSku.split("-");
+        const suffix = skuParts[skuParts.length - 1];
+        if (suffix && suffix.length < 30 && !/^\d+$/.test(suffix)) {
+          optionName = suffix;
         }
       }
 
-      // 4. Try property field — but only if NOT dimension-only data, and varies between variants
-      if (optionParts.length === 0 && v.variantProperty && v.variantProperty.trim()) {
-        const prop = v.variantProperty.trim();
-        if (!isDimensionString(prop)) {
-          optionParts.push(prop);
-        } else if (!propertiesAllSame) {
-          // Dimensions differ between variants — convert to readable format
-          optionParts.push(parseDimensions(prop));
-        }
-        // If dimensions are all the same, skip them entirely
-      }
-
-      // 5. Try variantStandard, variantAttr, variantUnit
-      if (optionParts.length === 0) {
-        for (const field of [v.variantStandard, v.variantAttr, v.variantUnit]) {
-          if (field && typeof field === "string" && field.trim() && !isDimensionString(field.trim())) {
-            optionParts.push(field.trim());
-            break;
-          }
-        }
-      }
-
-      // 6. Try to extract color from variant image URL
-      if (optionParts.length === 0 && v.variantImage) {
-        const colorFromImg = extractColorFromImage(v.variantImage);
-        if (colorFromImg) {
-          optionParts.push(colorFromImg);
-        }
-      }
-
-      // 7. Last resort: use SKU suffix or variant index
-      if (optionParts.length === 0) {
-        const sku = v.variantSku || "";
-        const skuSuffix = sku.split("-").pop() || sku.split("_").pop() || "";
-        if (skuSuffix && skuSuffix.length < 20 && skuSuffix !== sku) {
-          optionParts.push(`Style ${skuSuffix}`);
-        } else {
-          optionParts.push(`Style ${variants.length + 1}`);
-        }
+      // 5. Last resort
+      if (!optionName) {
+        optionName = `Style ${variants.length + 1}`;
       }
 
       let optionName = optionParts.join(" / ");
