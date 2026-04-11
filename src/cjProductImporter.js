@@ -310,19 +310,37 @@ async function createShopifyProduct(product, selection) {
   const res = await shopify.post("/products.json", productData);
   const newProduct = res.data.product;
 
-  // Upload images one by one (CJ URLs may need individual handling)
+  // Download CJ images and upload as base64 to Shopify CDN
+  let uploadedImages = 0;
   for (const imgUrl of imageUrls.slice(0, 10)) {
     try {
+      // Download image from CJ
+      const imgResponse = await axios.get(imgUrl, {
+        responseType: "arraybuffer",
+        timeout: 15000
+      });
+
+      const base64 = Buffer.from(imgResponse.data).toString("base64");
+      const ext = imgUrl.split(".").pop()?.split("?")[0] || "jpg";
+      const filename = `furryfable-${product.pid}-${uploadedImages + 1}.${ext}`;
+
+      // Upload as base64 to Shopify (bypasses URL validation entirely)
       await shopify.post(`/products/${newProduct.id}/images.json`, {
         image: {
-          src: imgUrl,
-          alt: selection.seoTitle
+          attachment: base64,
+          filename: filename,
+          alt: selection.seoTitle,
+          position: uploadedImages + 1
         }
       });
+
+      uploadedImages++;
+      console.log(`  Image ${uploadedImages} uploaded`);
     } catch (imgErr) {
-      console.warn(`  Image upload failed for ${imgUrl.substring(0, 50)}...: ${imgErr.message}`);
+      console.warn(`  Image upload failed: ${imgErr.message}`);
     }
   }
+  console.log(`  Total images: ${uploadedImages}/${imageUrls.length}`);
 
   // Add to collection
   const collectionId = COLLECTION_MAP[selection.collection];
