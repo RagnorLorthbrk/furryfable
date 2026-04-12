@@ -79,7 +79,9 @@ export async function getProductDetails(pid) {
  */
 async function scrapeProductsFromWebsite(keyword, page = 1) {
   const PET_CATEGORY_ID = "2409110611570657700";
-  const searchUrl = `https://cjdropshipping.com/search/${encodeURIComponent(keyword)}.html?pageNum=${page}&from=US&shipTo=US&defaultArea=2&id=${PET_CATEGORY_ID}&feildType=4&isAsc=0`;
+  // CJ website uses hyphens in URLs: "dog toy" → "dog-toy.html"
+  const slug = keyword.trim().toLowerCase().replace(/\s+/g, "-");
+  const searchUrl = `https://cjdropshipping.com/search/${slug}.html?pageNum=${page}&from=US&shipTo=US&defaultArea=2&id=${PET_CATEGORY_ID}&feildType=4&isAsc=0`;
 
   try {
     const response = await axios.get(searchUrl, {
