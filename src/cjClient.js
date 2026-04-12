@@ -77,11 +77,9 @@ export async function getProductDetails(pid) {
  * URL pattern: /search/{keyword}.html?from=US&shipTo=US&defaultArea=2&id={petCategoryId}
  * Product PID extracted from links: /product/{slug}-p-{PID}.html
  */
-async function scrapeProductsFromWebsite(keyword, page = 1) {
-  const PET_CATEGORY_ID = "2409110611570657700";
-  // CJ website uses hyphens in URLs: "dog toy" → "dog-toy.html"
-  const slug = keyword.trim().toLowerCase().replace(/\s+/g, "-");
-  const searchUrl = `https://cjdropshipping.com/search/${slug}.html?pageNum=${page}&from=US&shipTo=US&defaultArea=2&id=${PET_CATEGORY_ID}&feildType=4&isAsc=0`;
+async function scrapeProductsFromWebsite(page = 1) {
+  // Use the Pet Supplies category page filtered by US warehouse — same URL user browses manually
+  const searchUrl = `https://cjdropshipping.com/list/wholesale-pet-supplies-l-2409110611570657700.html?pageNum=${page}&from=US&shipTo=US&defaultArea=2`;
 
   try {
     const response = await axios.get(searchUrl, {
@@ -139,31 +137,19 @@ async function scrapeProductsFromWebsite(keyword, page = 1) {
 export async function searchPetProducts() {
   await getAccessToken();
 
-  // Search keywords — these go to the CJ WEBSITE, not API
-  const keywords = [
-    "dog toy", "cat toy", "pet toy",
-    "dog harness", "dog leash",
-    "dog clothes", "pet clothes",
-    "pet water fountain", "pet feeder",
-    "dog carrier", "dog backpack",
-    "cat scratching post", "cat tree",
-    "dog collar", "pet collar",
-    "dog bed", "pet bed", "cat bed",
-    "pet grooming", "dog bowl",
-    "dog anxiety", "pet puzzle",
-    "pooper scooper", "pet safety"
-  ];
-
   const allProductPids = [];
   const seenPids = new Set();
 
-  // STEP 1: Scrape CJ website for LIVE product PIDs
-  console.log("  Step 1: Browsing CJ website (US warehouse, Pet Supplies)...");
+  // STEP 1: Browse CJ Pet Supplies category pages (US warehouse)
+  // Same URL the user browses manually — no keyword search, just category listing
+  console.log("  Step 1: Browsing CJ Pet Supplies (US warehouse)...");
 
-  for (const keyword of keywords) {
+  // Browse first 5 pages of Pet Supplies category
+  const MAX_PAGES = 5;
+  for (let page = 1; page <= MAX_PAGES; page++) {
     try {
-      process.stdout.write(`    "${keyword}"... `);
-      const products = await scrapeProductsFromWebsite(keyword);
+      process.stdout.write(`    Page ${page}/${MAX_PAGES}... `);
+      const products = await scrapeProductsFromWebsite(page);
 
       let added = 0;
       for (const p of products) {
@@ -175,8 +161,13 @@ export async function searchPetProducts() {
       }
       console.log(`${products.length} found, ${added} new`);
 
-      // Small delay between website requests
-      await new Promise(r => setTimeout(r, 1500));
+      if (products.length === 0) {
+        console.log("    No more products. Stopping pagination.");
+        break;
+      }
+
+      // Delay between page requests
+      await new Promise(r => setTimeout(r, 2000));
     } catch (err) {
       console.log(`failed: ${err.message}`);
     }
