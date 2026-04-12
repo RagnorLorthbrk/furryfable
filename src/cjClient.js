@@ -92,41 +92,44 @@ async function scrapeProductsFromWebsite(page = 1) {
   const html = typeof response.data === "string" ? response.data : "";
 
   // Extract window.PRODUCTSRES JSON from the HTML
-  const match = html.match(/window\.PRODUCTSRES\s*=\s*(\{[\s\S]*?\})\s*\n/);
-  if (!match) {
-    console.log("    Could not find PRODUCTSRES in HTML");
+  // Format in HTML is: PRODUCTSRES={"pageSize":"60",...}
+  // Try multiple search patterns
+  let startIdx = html.indexOf('PRODUCTSRES={');
+  if (startIdx === -1) startIdx = html.indexOf('PRODUCTSRES ={');
+  if (startIdx === -1) startIdx = html.indexOf('PRODUCTSRES= {');
+  if (startIdx === -1) startIdx = html.indexOf('PRODUCTSRES = {');
+
+  if (startIdx === -1) {
+    console.log("    Could not find PRODUCTSRES in HTML (length: " + html.length + ")");
+    // Log a sample to debug
+    const sampleIdx = html.indexOf('PRODUCTSRES');
+    if (sampleIdx !== -1) {
+      console.log("    Found 'PRODUCTSRES' at index " + sampleIdx + ": " + html.substring(sampleIdx, sampleIdx + 50));
+    }
     return { products: [], totalPages: 0 };
+  }
+
+  // Find the opening brace
+  const jsonStart = html.indexOf('{', startIdx);
+
+  // Count braces to find matching closing brace (handles nested objects)
+  let depth = 0;
+  let jsonEnd = jsonStart;
+  for (let i = jsonStart; i < html.length && i < jsonStart + 1000000; i++) {
+    if (html[i] === '{') depth++;
+    else if (html[i] === '}') {
+      depth--;
+      if (depth === 0) { jsonEnd = i + 1; break; }
+    }
   }
 
   let productsData;
   try {
-    productsData = JSON.parse(match[1]);
+    productsData = JSON.parse(html.substring(jsonStart, jsonEnd));
   } catch (e) {
-    // The JSON might be cut off by newline. Try a more aggressive extraction
-    const startIdx = html.indexOf('window.PRODUCTSRES=');
-    if (startIdx === -1) {
-      console.log("    Could not parse PRODUCTSRES JSON");
-      return { products: [], totalPages: 0 };
-    }
-
-    // Find the matching closing brace
-    const jsonStart = html.indexOf('{', startIdx);
-    let depth = 0;
-    let jsonEnd = jsonStart;
-    for (let i = jsonStart; i < html.length && i < jsonStart + 500000; i++) {
-      if (html[i] === '{') depth++;
-      else if (html[i] === '}') {
-        depth--;
-        if (depth === 0) { jsonEnd = i + 1; break; }
-      }
-    }
-
-    try {
-      productsData = JSON.parse(html.substring(jsonStart, jsonEnd));
-    } catch (e2) {
-      console.log("    Failed to parse PRODUCTSRES:", e2.message);
-      return { products: [], totalPages: 0 };
-    }
+    console.log("    Failed to parse PRODUCTSRES JSON:", e.message);
+    console.log("    JSON preview:", html.substring(jsonStart, jsonStart + 200));
+    return { products: [], totalPages: 0 };
   }
 
   const totalPages = parseInt(productsData.totalPages) || 0;
