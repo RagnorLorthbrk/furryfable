@@ -189,9 +189,34 @@ async function scrapeProductsFromWebsite(page = 1) {
 }
 
 // ═══════════════════════════════════════
-// METHOD 2: API /product/list (V1)
-// Only endpoint available on unverified stores
+// METHOD 2: API /product/list (V1) + listV2 with saleStatus=3
 // ═══════════════════════════════════════
+
+async function searchAPIv2(categoryId, page = 1) {
+  try {
+    const res = await cjCall(() =>
+      cj.get("/product/listV2", {
+        params: {
+          categoryId,
+          countryCode: "US",
+          saleStatus: "3",
+          verifiedWarehouse: 1,
+          page,
+          size: 100,
+          orderBy: 1,
+          sort: "desc"
+        }
+      })
+    );
+    if (res.data.result) {
+      return res.data.data?.list || [];
+    }
+  } catch (err) {
+    if (err.response?.status === 429) throw err;
+    console.log(`    listV2 not available: ${err.response?.status || err.message}`);
+  }
+  return [];
+}
 
 async function searchAPI(categoryId, keyword, page = 1) {
   const params = {
@@ -270,9 +295,28 @@ export async function searchPetProducts() {
     return allProducts;
   }
 
-  // ═══ METHOD 2: API with category IDs ═══
-  console.log(`\n  Method 2: API /product/list with pet category IDs...`);
-  console.log("  (Note: Store is UNVERIFIED — API may return stale data)");
+  // ═══ METHOD 2: API listV2 with saleStatus=3 ═══
+  console.log(`\n  Method 2: API listV2 with saleStatus=3 (store now verified)...`);
+  try {
+    const PET_CAT = "2409110611570657700";
+    for (let page = 1; page <= 2; page++) {
+      const products = await searchAPIv2(PET_CAT, page);
+      const added = addProducts(products);
+      console.log(`    Page ${page}: ${products.length} returned, ${added} new (total: ${allProducts.length})`);
+      if (products.length === 0) break;
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  } catch (err) {
+    console.log(`    listV2 failed: ${err.message}`);
+  }
+
+  if (allProducts.length >= 20) {
+    console.log(`\n  ✅ Found ${allProducts.length} products via API listV2`);
+    return allProducts;
+  }
+
+  // ═══ METHOD 3: API V1 with category IDs ═══
+  console.log(`\n  Method 3: API /product/list V1 with pet category IDs...`);
 
   // First get category IDs
   const petCats = await getPetCategoryIds();
@@ -292,7 +336,7 @@ export async function searchPetProducts() {
 
   // Try keyword search as well
   if (allProducts.length < 20) {
-    console.log("\n  Method 3: API keyword search...");
+    console.log("\n  Method 4: API keyword search...");
     const keywords = ["dog toy", "cat toy", "pet harness", "dog bed", "pet feeder", "cat tree"];
     for (const kw of keywords) {
       try {
