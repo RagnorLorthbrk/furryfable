@@ -68,126 +68,100 @@ export async function getProductDetails(pid) {
   return res.data.data;
 }
 
-// ═══════════════════════════════════════
-// METHOD 1: API with saleStatus=3
-// (Approved for sale — filters out removed/archived products)
-// ═══════════════════════════════════════
-
 /**
- * Search via /product/listV2 with saleStatus=3 (approved for sale)
- * This is the key filter that matches CJ website's live catalog
+ * Get pet category IDs from CJ API
  */
-async function searchAPIv2(categoryId, page = 1, size = 100) {
-  // Try GET first (per CJ docs), then POST as fallback
-  for (const method of ["get", "post"]) {
-    try {
-      const params = {
-        categoryId: categoryId,
-        countryCode: "US",
-        saleStatus: "3",           // KEY: Only "Approved for Sale" products
-        verifiedWarehouse: 1,
-        pageNum: page,
-        pageSize: size,
-        page: page,                // V2 uses 'page' not 'pageNum'
-        size: size,                // V2 uses 'size' not 'pageSize'
-        orderBy: 1,                // Sort by listings (popularity)
-        sort: "desc"
-      };
-
-      let res;
-      if (method === "get") {
-        res = await cjCall(() => cj.get("/product/listV2", { params }));
-      } else {
-        res = await cjCall(() => cj.post("/product/listV2", params));
-      }
-
-      if (res.data.result) {
-        const list = res.data.data?.list || [];
-        if (list.length > 0) {
-          console.log(`    ✅ listV2 (${method.toUpperCase()}) with saleStatus=3 returned ${list.length} products`);
-          return list;
-        }
-      }
-    } catch (err) {
-      if (err.response?.status === 429) throw err;
-      // Try next method
-    }
-  }
-  return [];
-}
-
-/**
- * Search via /product/list (V1) with startInventory filter
- */
-async function searchAPIv1(categoryId, page = 1, pageSize = 100) {
+async function getPetCategoryIds() {
   try {
-    const res = await cjCall(() =>
-      cj.get("/product/list", {
-        params: {
-          categoryId: categoryId,
-          countryCode: "US",
-          startInventory: 1,
-          verifiedWarehouse: 1,
-          pageNum: page,
-          pageSize: pageSize,
-          sort: "desc",
-          orderBy: "listedNum"
-        }
-      })
-    );
+    const res = await cjCall(() => cj.get("/product/getCategory"));
+    if (!res.data.result) return [];
 
-    if (res.data.result) {
-      const list = res.data.data?.list || [];
-      if (list.length > 0) {
-        console.log(`    ✅ list V1 with startInventory=1 returned ${list.length} products`);
-        return list;
+    const categories = res.data.data || [];
+    const petCats = [];
+
+    // Find all pet-related category IDs (all levels)
+    for (const cat of categories) {
+      const name = (cat.categoryFirstName || cat.categoryName || "").toLowerCase();
+      if (name.includes("pet")) {
+        petCats.push({ id: cat.categoryId, name: cat.categoryFirstName || cat.categoryName });
+
+        // Get subcategories too
+        if (cat.categorySecond) {
+          for (const sub of cat.categorySecond) {
+            petCats.push({ id: sub.categoryId, name: sub.categorySecondName || sub.categoryName });
+            if (sub.categoryThird) {
+              for (const third of sub.categoryThird) {
+                petCats.push({ id: third.categoryId, name: third.categoryName });
+              }
+            }
+          }
+        }
       }
     }
+
+    return petCats;
   } catch (err) {
-    if (err.response?.status === 429) throw err;
+    console.log("    Could not fetch categories:", err.message);
+    return [];
   }
-  return [];
 }
 
 // ═══════════════════════════════════════
-// METHOD 2: Website scraping (fallback)
-// Extracts window.PRODUCTSRES from HTML
+// METHOD 1: Website scraping (most reliable)
+// Extracts window.PRODUCTSRES from CJ HTML
 // ═══════════════════════════════════════
 
 async function scrapeProductsFromWebsite(page = 1) {
   const searchUrl = `https://cjdropshipping.com/list/wholesale-pet-supplies-l-2409110611570657700.html?pageNum=${page}&from=US&shipTo=US&defaultArea=2`;
 
   const response = await axios.get(searchUrl, {
-    timeout: 20000,
+    timeout: 30000,
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.5"
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Connection": "keep-alive",
+      "Cache-Control": "no-cache"
     }
   });
 
   const html = typeof response.data === "string" ? response.data : "";
+  console.log(`    HTML length: ${html.length}`);
 
-  // Find PRODUCTSRES in HTML (format: PRODUCTSRES={...})
-  let startIdx = html.indexOf('PRODUCTSRES={');
-  if (startIdx === -1) startIdx = html.indexOf('PRODUCTSRES ={');
-  if (startIdx === -1) startIdx = html.indexOf('PRODUCTSRES= {');
-  if (startIdx === -1) startIdx = html.indexOf('PRODUCTSRES = {');
+  // Find PRODUCTSRES in any format
+  let startIdx = -1;
+  for (const pattern of ['PRODUCTSRES={', 'PRODUCTSRES ={', 'PRODUCTSRES= {', 'PRODUCTSRES = {']) {
+    startIdx = html.indexOf(pattern);
+    if (startIdx !== -1) break;
+  }
 
   if (startIdx === -1) {
-    // Debug: check if PRODUCTSRES exists at all, maybe different format
+    // Debug: check if PRODUCTSRES exists at all
     const anyIdx = html.indexOf('PRODUCTSRES');
     if (anyIdx !== -1) {
-      console.log("    Found PRODUCTSRES but unexpected format:", html.substring(anyIdx, anyIdx + 80));
+      console.log("    PRODUCTSRES found but format unknown:", html.substring(anyIdx, anyIdx + 80));
+    } else {
+      console.log("    PRODUCTSRES not found in HTML at all");
+      // Check if we got a login page, error page, or different content
+      if (html.includes('login') || html.includes('Login')) {
+        console.log("    ⚠️ CJ returned a login page — may need cookies");
+      }
+      if (html.includes('Cloudflare') || html.includes('cf-')) {
+        console.log("    ⚠️ Blocked by Cloudflare protection");
+      }
+      // Log a sample of what we got
+      const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+      if (titleMatch) console.log("    Page title:", titleMatch[1]);
     }
     return [];
   }
 
-  // Find the opening brace and count to matching close
+  // Find JSON start and count braces to find end
   const jsonStart = html.indexOf('{', startIdx);
   let depth = 0;
   let jsonEnd = jsonStart;
-  for (let i = jsonStart; i < html.length && i < jsonStart + 1000000; i++) {
+  for (let i = jsonStart; i < html.length && i < jsonStart + 2000000; i++) {
     if (html[i] === '{') depth++;
     else if (html[i] === '}') {
       depth--;
@@ -198,43 +172,53 @@ async function scrapeProductsFromWebsite(page = 1) {
   try {
     const data = JSON.parse(html.substring(jsonStart, jsonEnd));
     const list = data.content?.[0]?.productList || [];
+
     return list.map(p => ({
       pid: p.id,
       productNameEn: p.nameEn || p.name || "",
-      sellPrice: p.sellPrice || p.nowPrice || "0",
+      sellPrice: String(p.sellPrice || p.nowPrice || "0"),
       productImage: p.image || p.bigImage || "",
       listedNum: parseInt(p.listedNum) || 0,
-      categoryName: p.oneCategoryName || ""
+      categoryName: p.oneCategoryName || p.twoCategoryName || ""
     }));
   } catch (e) {
     console.log("    JSON parse failed:", e.message);
+    console.log("    Preview:", html.substring(jsonStart, jsonStart + 200));
     return [];
   }
 }
 
 // ═══════════════════════════════════════
-// MAIN SEARCH FUNCTION
-// Tries: API saleStatus=3 → API V1 → Website scraping
+// METHOD 2: API /product/list (V1)
+// Only endpoint available on unverified stores
 // ═══════════════════════════════════════
 
-/**
- * Pet Supplies category ID on CJ
- */
-const PET_CATEGORY_ID = "2409110611570657700";
+async function searchAPI(categoryId, keyword, page = 1) {
+  const params = {
+    pageNum: page,
+    pageSize: 200,
+    countryCode: "US",
+    sort: "desc",
+    orderBy: "listedNum"
+  };
 
-/**
- * Pet sub-categories to search if main category works
- */
-const PET_SUBCATEGORIES = [
-  { name: "Pet Toys", id: null },
-  { name: "Pet Drinking & Feeding", id: null },
-  { name: "Pet Outdoor Supplies", id: null },
-  { name: "Pet Apparels", id: null },
-  { name: "Pet Collars & Harnesses", id: null },
-  { name: "Pet Groomings", id: null },
-  { name: "Pet Furnitures", id: null },
-  { name: "Pet Bedding", id: null }
-];
+  if (categoryId) params.categoryId = categoryId;
+  if (keyword) params.productNameEn = keyword;
+
+  try {
+    const res = await cjCall(() => cj.get("/product/list", { params }));
+    if (res.data.result) {
+      return res.data.data?.list || [];
+    }
+  } catch (err) {
+    if (err.response?.status === 429) throw err;
+  }
+  return [];
+}
+
+// ═══════════════════════════════════════
+// MAIN SEARCH
+// ═══════════════════════════════════════
 
 export async function searchPetProducts() {
   await getAccessToken();
@@ -249,7 +233,6 @@ export async function searchPetProducts() {
       const name = p.productNameEn || p.nameEn || p.name || "";
       const price = parseFloat(p.sellPrice || p.nowPrice || 0);
       const image = p.productImage || p.image || p.bigImage || "";
-      const listedNum = parseInt(p.listedNum) || 0;
 
       if (!pid || seenIds.has(pid) || !name) continue;
       if (price < 1 || price > 30) continue;
@@ -260,95 +243,63 @@ export async function searchPetProducts() {
         productNameEn: name,
         sellPrice: String(price),
         productImage: image,
-        listedNum
+        listedNum: parseInt(p.listedNum) || 0
       });
       added++;
     }
     return added;
   }
 
-  // ═══ ATTEMPT 1: API listV2 with saleStatus=3 ═══
-  console.log("  Method 1: API listV2 with saleStatus=3 (approved for sale)...");
+  // ═══ METHOD 1: Website scraping (most reliable — shows same data you see browsing) ═══
+  console.log("  Method 1: Scraping CJ website (US warehouse pet supplies)...");
   try {
     for (let page = 1; page <= 3; page++) {
-      const products = await searchAPIv2(PET_CATEGORY_ID, page, 100);
-      const added = addProducts(products);
-      console.log(`    Page ${page}: ${products.length} returned, ${added} new qualified`);
-      if (products.length === 0) break;
-      await new Promise(r => setTimeout(r, 2000));
-    }
-  } catch (err) {
-    console.log(`    Failed: ${err.message}`);
-  }
-
-  if (allProducts.length >= 20) {
-    console.log(`\n  ✅ Found ${allProducts.length} products via API (saleStatus=3)`);
-    return allProducts;
-  }
-  console.log(`    Got ${allProducts.length} — trying next method...`);
-
-  // ═══ ATTEMPT 2: API V1 with startInventory ═══
-  console.log("\n  Method 2: API list V1 with startInventory=1...");
-  try {
-    for (let page = 1; page <= 3; page++) {
-      const products = await searchAPIv1(PET_CATEGORY_ID, page, 100);
-      const added = addProducts(products);
-      console.log(`    Page ${page}: ${products.length} returned, ${added} new qualified`);
-      if (products.length === 0) break;
-      await new Promise(r => setTimeout(r, 2000));
-    }
-  } catch (err) {
-    console.log(`    Failed: ${err.message}`);
-  }
-
-  if (allProducts.length >= 20) {
-    console.log(`\n  ✅ Found ${allProducts.length} products via API V1`);
-    return allProducts;
-  }
-  console.log(`    Got ${allProducts.length} — trying website scraping...`);
-
-  // ═══ ATTEMPT 3: Website scraping (PRODUCTSRES) ═══
-  console.log("\n  Method 3: Scraping CJ website (fallback)...");
-  try {
-    for (let page = 1; page <= 3; page++) {
-      process.stdout.write(`    Page ${page}... `);
+      process.stdout.write(`    Page ${page}/3... `);
       const products = await scrapeProductsFromWebsite(page);
       const added = addProducts(products);
-      console.log(`${products.length} scraped, ${added} new qualified`);
+      console.log(`${products.length} scraped, ${added} new (total: ${allProducts.length})`);
       if (products.length === 0) break;
       await new Promise(r => setTimeout(r, 3000));
     }
   } catch (err) {
-    console.log(`    Failed: ${err.message}`);
+    console.log(`    Scraping failed: ${err.message}`);
   }
 
-  // ═══ ATTEMPT 4: Keyword search with saleStatus (last resort) ═══
-  if (allProducts.length < 10) {
-    console.log("\n  Method 4: Keyword search with saleStatus=3...");
-    const keywords = ["dog toy", "cat toy", "dog harness", "pet feeder", "dog bed", "cat tree", "pet grooming"];
+  if (allProducts.length >= 20) {
+    console.log(`\n  ✅ Found ${allProducts.length} live products via website`);
+    return allProducts;
+  }
+
+  // ═══ METHOD 2: API with category IDs ═══
+  console.log(`\n  Method 2: API /product/list with pet category IDs...`);
+  console.log("  (Note: Store is UNVERIFIED — API may return stale data)");
+
+  // First get category IDs
+  const petCats = await getPetCategoryIds();
+  if (petCats.length > 0) {
+    console.log(`    Found ${petCats.length} pet categories`);
+    // Try top-level pet category
+    const topCat = petCats[0];
+    try {
+      const products = await searchAPI(topCat.id, null, 1);
+      const added = addProducts(products);
+      console.log(`    ${topCat.name}: ${products.length} returned, ${added} new`);
+    } catch (err) {
+      console.log(`    Failed: ${err.message}`);
+    }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+
+  // Try keyword search as well
+  if (allProducts.length < 20) {
+    console.log("\n  Method 3: API keyword search...");
+    const keywords = ["dog toy", "cat toy", "pet harness", "dog bed", "pet feeder", "cat tree"];
     for (const kw of keywords) {
       try {
         process.stdout.write(`    "${kw}"... `);
-        const res = await cjCall(() =>
-          cj.get("/product/listV2", {
-            params: {
-              keyWord: kw,
-              countryCode: "US",
-              saleStatus: "3",
-              page: 1,
-              size: 20,
-              orderBy: 1,
-              sort: "desc"
-            }
-          })
-        );
-        if (res.data.result) {
-          const list = res.data.data?.list || [];
-          const added = addProducts(list);
-          console.log(`${list.length} found, ${added} new`);
-        } else {
-          console.log("no results");
-        }
+        const products = await searchAPI(null, kw, 1);
+        const added = addProducts(products);
+        console.log(`${products.length} found, ${added} new`);
         await new Promise(r => setTimeout(r, 2000));
       } catch (err) {
         console.log(`failed: ${err.message}`);
@@ -360,11 +311,9 @@ export async function searchPetProducts() {
     }
   }
 
-  // Final filter: only products with listedNum > 0 (other dropshippers use them = truly active)
-  const verifiedProducts = allProducts.filter(p => p.listedNum > 0);
+  // Filter: prefer products with listedNum > 0
+  const verified = allProducts.filter(p => p.listedNum > 0);
+  console.log(`\n  Result: ${allProducts.length} total, ${verified.length} with active listings`);
 
-  console.log(`\n  Result: ${allProducts.length} total, ${verifiedProducts.length} with listedNum > 0`);
-
-  // Use verified if we have enough, otherwise use all
-  return verifiedProducts.length >= 10 ? verifiedProducts : allProducts;
+  return verified.length >= 10 ? verified : allProducts;
 }
