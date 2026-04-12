@@ -314,8 +314,6 @@ async function createShopifyProduct(product, selection) {
         optionName = `Style ${variants.length + 1}`;
       }
 
-      let optionName = optionParts.join(" / ");
-
       // Ensure uniqueness — if duplicate, append counter
       const count = seenOptions.get(optionName) || 0;
       seenOptions.set(optionName, count + 1);
