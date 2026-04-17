@@ -170,7 +170,8 @@ async function scrapeProductsFromWebsite(page = 1) {
   }
 
   try {
-    const data = JSON.parse(html.substring(jsonStart, jsonEnd));
+    const rawJson = html.substring(jsonStart, jsonEnd).replace(/:undefined/g, ':null');
+    const data = JSON.parse(rawJson);
     const list = data.content?.[0]?.productList || [];
 
     return list.map(p => ({
