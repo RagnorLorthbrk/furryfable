@@ -185,7 +185,15 @@ console.log(`Found ${products.length} products to audit`);
 let updated = 0;
 let skipped = 0;
 
-for (const product of products) {
+// Only process products that have no description or a very short one (manually added)
+const productsToProcess = products.filter(p => {
+  const descLength = (p.body_html || "").replace(/<[^>]+>/g, "").trim().length;
+  return descLength < 300;
+});
+
+console.log(`${productsToProcess.length} products need descriptions (${products.length - productsToProcess.length} already have one)`);
+
+for (const product of productsToProcess) {
   console.log(`\nAnalyzing: "${product.title}" (ID: ${product.id})`);
 
   try {
@@ -215,5 +223,6 @@ for (const product of products) {
 
 console.log(`\nProduct SEO Optimization Complete:`);
 console.log(`  Updated: ${updated}`);
-console.log(`  Skipped: ${skipped}`);
+console.log(`  Skipped (already had description): ${products.length - productsToProcess.length}`);
+console.log(`  Skipped (AI said no update needed): ${skipped}`);
 console.log(`  Total: ${products.length}`);

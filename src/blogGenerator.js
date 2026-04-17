@@ -56,7 +56,7 @@ SECTION 1: ADVANCED SEO REQUIREMENTS
 2. CONTENT STRUCTURE (Critical for Featured Snippets):
    - Start with a compelling hook paragraph (2-3 sentences max)
    - Include a "Quick Answer" box right after the intro — a 2-3 sentence direct answer to the main query
-   - Use H2 for main sections, H3 for subsections
+   - Use H3 for main sections, H4 for subsections (NOT h1 or h2 — the page title already uses those)
    - Include numbered lists and bullet points for scannability
    - Add a comparison table where relevant (HTML <table> with proper headers)
    - Content length: 1800-2500 words (comprehensive but focused)
@@ -101,9 +101,9 @@ Optimize for AI engines (ChatGPT, Gemini, Perplexity, Claude) to cite this conte
 
 3. FAQ SECTION: Include 5 FAQ questions at the bottom in this exact format:
    <div class="faq-section">
-   <h2>Frequently Asked Questions</h2>
+   <h3>Frequently Asked Questions</h3>
    <div class="faq-item">
-   <h3>Q: [Question matching a real search query]?</h3>
+   <h4>Q: [Question matching a real search query]?</h4>
    <p>A: [Direct, concise answer in 2-3 sentences]</p>
    </div>
    </div>
@@ -129,7 +129,7 @@ SECTION 4: CONTENT RULES
 1. FACTUAL GROUNDING: Use real ${currentYear} pet industry trends. Reference AKC, APPA, ASPCA general guidance.
 2. NO HALLUCINATIONS: Never invent specific statistics. Use general trends instead.
 3. TONE: Professional, warm, authoritative. Premium feel for USA/Canada pet parents.
-4. NO markdown. Output VALID HTML only (h1, h2, h3, p, ul, ol, li, table, a, strong, em, div).
+4. NO markdown. Output VALID HTML only (h3, h4, p, ul, ol, li, table, a, strong, em, div). NEVER use h1 or h2 tags — the page template already handles those.
 5. NO emojis in the article body.
 6. Include a strong CTA at the end linking to relevant FurryFable collections.
 

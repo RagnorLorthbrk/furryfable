@@ -196,9 +196,8 @@ async function generateProductDescription(product, seoTitle, collection) {
 Write a premium Shopify product description for FurryFable.com.
 
 Product: ${seoTitle}
-Original name: ${product.productNameEn}
 Category: ${collection}
-Price will be: $${(parseFloat(product.sellPrice) * 2).toFixed(2)}
+Price: $${(parseFloat(product.sellPrice) * 2).toFixed(2)}
 
 Write in HTML format. Include:
 1. A bold opening benefit statement
@@ -210,9 +209,16 @@ Write in HTML format. Include:
 7. A closing note from FurryFable about quality
 
 TONE: Warm, premium, trustworthy. Like talking to a pet parent friend.
-NO markdown. Valid HTML only (h2, h3, p, ul, li, strong, em).
+NO markdown. Valid HTML only (h3, h4, p, ul, li, strong, em). NEVER use h1 or h2.
 NO emojis in the description.
-Do NOT mention CJ Dropshipping, China, or any supplier.
+
+CRITICAL — NEVER include any of the following:
+- CJ Dropshipping, CJDropshipping, or any mention of the supplier
+- China, Chinese, manufacturer, factory, wholesale, dropship, dropshipping
+- "Ships from", "warehouse", "processing time", "supplier", "vendor instructions"
+- Any supply chain or fulfillment details
+- The original product name if it sounds like a supplier SKU or contains codes
+This is a FurryFable branded product. Write as if FurryFable makes it.
 `;
 
   const res = await axios.post(
@@ -225,6 +231,24 @@ Do NOT mention CJ Dropshipping, China, or any supplier.
 
   let html = res.data.candidates[0].content.parts[0].text;
   html = html.replace(/```html|```/g, "").trim();
+
+  // Strip any dropshipping / supplier signals that slipped through
+  const dropshipPatterns = [
+    /\bCJ\s*Dropshipping\b/gi,
+    /\bCJDropshipping\b/gi,
+    /\bdropship(ping)?\b/gi,
+    /\bwholesale\b/gi,
+    /\bsupplier\b/gi,
+    /\bmanufacturer\b/gi,
+    /\bships?\s+from\s+(china|warehouse|supplier)\b/gi,
+    /\b(made\s+in|sourced\s+from)\s+china\b/gi,
+    /\bprocessing\s+time\b/gi,
+    /\bvendor\b/gi
+  ];
+  for (const pattern of dropshipPatterns) {
+    html = html.replace(pattern, "");
+  }
+
   return html;
 }
 
