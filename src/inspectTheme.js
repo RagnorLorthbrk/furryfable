@@ -6,9 +6,10 @@ const shopify = axios.create({
 });
 const theme = (await shopify.get("/themes.json")).data.themes.find(t => t.role === "main");
 console.log("Theme:", theme.name, theme.id);
-const assets = (await shopify.get(`/themes/${theme.id}/assets.json`)).data.assets;
-const relevant = assets.filter(a =>
-  a.key.includes("price") || a.key.includes("product-card") || a.key.includes("product-price") || a.key.includes("card-product")
-);
-console.log("\nRelevant assets:");
-relevant.forEach(a => console.log(" ", a.key));
+
+// Print snippets/price.liquid content
+const priceAsset = (await shopify.get(`/themes/${theme.id}/assets.json`, {
+  params: { "asset[key]": "snippets/price.liquid" }
+})).data.asset;
+console.log("\n=== snippets/price.liquid ===\n");
+console.log(priceAsset.value);
