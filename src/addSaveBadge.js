@@ -87,36 +87,31 @@ const SAVE_BADGE_STYLE = `
     }
 
     function run() {
-      // Find all compare-at-price elements in this theme
+      // Theme structure:
+      // div.price__sale
+      //   span.price-item__group > span.price-item--sale.price > span.glc-money ($X)
+      //   span.price-item__group > span.price-item--regular.compare-at-price > span.glc-money ($Y)
       document.querySelectorAll('.compare-at-price').forEach(function(compareEl) {
         // Skip if badge already added
-        if (compareEl.querySelector('.inline-discount') || compareEl.nextElementSibling && compareEl.nextElementSibling.classList.contains('inline-discount')) return;
+        if (compareEl.parentNode.querySelector('.inline-discount')) return;
 
         var comparePrice = parsePrice(compareEl);
         if (!comparePrice) return;
 
-        // Sale price is in .price-item--sale, which is a sibling in the same price wrapper
-        var wrapper = compareEl.closest('.price__container, .price, [class*="price-wrapper"], [class*="price__group"]') || compareEl.parentNode.parentNode;
-        var saleEl = wrapper ? wrapper.querySelector('.price-item--sale') : null;
+        // Go up to div.price__sale which contains both price groups
+        var priceBlock = compareEl.closest('.price__sale') || compareEl.parentNode.parentNode;
+        var saleEl = priceBlock ? priceBlock.querySelector('.price-item--sale') : null;
         var salePrice = parsePrice(saleEl);
-
-        // Fallback: look for any price element in the parent that is less than compare
-        if (!salePrice && wrapper) {
-          wrapper.querySelectorAll('[class*="price"]').forEach(function(el) {
-            if (el === compareEl || el.contains(compareEl)) return;
-            var p = parsePrice(el);
-            if (p > 0 && p < comparePrice) salePrice = p;
-          });
-        }
 
         var pct = calcPct(comparePrice, salePrice);
         if (!pct) return;
 
-        // Inline badge after compare price element
+        // Insert badge after the compare-at-price's parent group span
+        var groupSpan = compareEl.parentNode;
         var badge = document.createElement('span');
         badge.className = 'inline-discount';
         badge.textContent = 'Save ' + pct + '%';
-        compareEl.insertAdjacentElement('afterend', badge);
+        groupSpan.insertAdjacentElement('afterend', badge);
 
         // Card badge on collection/related product cards
         var card = compareEl.closest('li, article, [class*="card"], [class*="product-item"], [class*="grid__item"]');
