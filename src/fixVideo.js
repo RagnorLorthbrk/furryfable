@@ -66,7 +66,15 @@ const VIDEO_JS_FILES = [
 ];
 
 function removeMuted(content) {
-  return content.replace(/\s+muted(?:=['"](?:muted|true)['"])?(?=[\s\/>])/gi, "");
+  return content
+    // Liquid video_tag param: muted: true or muted: false
+    .replace(/,?\s*muted:\s*(?:true|false|'1'|'0'|1|0)/gi, "")
+    // YouTube/Vimeo URL param: &muted=1 or &muted=0
+    .replace(/&(?:amp;)?muted=[01]/gi, "")
+    // HTML attribute: <video muted> or <video muted="muted">
+    .replace(/\s+muted(?:=['"](?:muted|true)['"])?(?=[\s\/>])/gi, "")
+    // external_video_url Liquid param: muted: '1'
+    .replace(/,?\s*muted:\s*['"][^'"]*['"]/gi, "");
 }
 
 async function main() {
@@ -137,7 +145,9 @@ async function main() {
   const VIDEO_FIX_CSS = `<!-- FurryFable Video Fix -->
 <style>
   /* Only targets <video> elements — does NOT affect images */
-  video { object-fit: contain !important; }
+  video { object-fit: contain !important; background: #000; }
+  /* Restore image display exactly as before */
+  img { object-fit: unset; width: unset; height: unset; max-height: unset; }
 </style>
 <!-- /FurryFable Video Fix -->`;
 
