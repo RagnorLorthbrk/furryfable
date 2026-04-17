@@ -73,10 +73,12 @@ const SAVE_BADGE_STYLE = `
   }
 </style>
 <script>
-  // FurryFable Save Badge — uses existing .inline-discount class
+  // FurryFable Save Badge
+  // Theme uses .compare-at-price + .price-item--sale (no <s>/<del> tags)
   (function() {
-    function parsePrice(text) {
-      var m = (text || '').replace(/,/g, '').match(/\d+\.?\d*/);
+    function parsePrice(el) {
+      var t = (el ? el.textContent : '').replace(/,/g, '');
+      var m = t.match(/\d+\.?\d*/);
       return m ? parseFloat(m[0]) : 0;
     }
     function calcPct(compare, sale) {
@@ -85,45 +87,39 @@ const SAVE_BADGE_STYLE = `
     }
 
     function run() {
-      // Find every strikethrough price element (<s> or <del>)
-      document.querySelectorAll('s, del').forEach(function(strikeEl) {
-        var comparePrice = parsePrice(strikeEl.textContent);
+      // Find all compare-at-price elements in this theme
+      document.querySelectorAll('.compare-at-price').forEach(function(compareEl) {
+        // Skip if badge already added
+        if (compareEl.querySelector('.inline-discount') || compareEl.nextElementSibling && compareEl.nextElementSibling.classList.contains('inline-discount')) return;
+
+        var comparePrice = parsePrice(compareEl);
         if (!comparePrice) return;
 
-        var parent = strikeEl.parentNode;
-        if (!parent) return;
+        // Sale price is in .price-item--sale, which is a sibling in the same price wrapper
+        var wrapper = compareEl.closest('.price__container, .price, [class*="price-wrapper"], [class*="price__group"]') || compareEl.parentNode.parentNode;
+        var saleEl = wrapper ? wrapper.querySelector('.price-item--sale') : null;
+        var salePrice = parsePrice(saleEl);
 
-        // Skip if badge already injected nearby
-        if (parent.querySelector('.inline-discount')) return;
-
-        // Find sale price: scan siblings in parent and grandparent
-        var salePrice = 0;
-        function scanNodes(nodes, skipContaining) {
-          nodes.forEach(function(node) {
-            if (salePrice) return;
-            if (skipContaining && node.contains && node.contains(strikeEl)) return;
-            if (node === strikeEl) return;
-            var t = (node.textContent || '').trim();
-            var p = parsePrice(t);
+        // Fallback: look for any price element in the parent that is less than compare
+        if (!salePrice && wrapper) {
+          wrapper.querySelectorAll('[class*="price"]').forEach(function(el) {
+            if (el === compareEl || el.contains(compareEl)) return;
+            var p = parsePrice(el);
             if (p > 0 && p < comparePrice) salePrice = p;
           });
-        }
-        scanNodes(Array.from(parent.childNodes), false);
-        if (!salePrice && parent.parentNode) {
-          scanNodes(Array.from(parent.parentNode.childNodes), true);
         }
 
         var pct = calcPct(comparePrice, salePrice);
         if (!pct) return;
 
-        // Inline badge using existing theme class
+        // Inline badge after compare price element
         var badge = document.createElement('span');
         badge.className = 'inline-discount';
         badge.textContent = 'Save ' + pct + '%';
-        strikeEl.insertAdjacentElement('afterend', badge);
+        compareEl.insertAdjacentElement('afterend', badge);
 
-        // Card badge for collection grids
-        var card = strikeEl.closest('li, article, [class*="card"], [class*="product-item"], [class*="grid__item"]');
+        // Card badge on collection/related product cards
+        var card = compareEl.closest('li, article, [class*="card"], [class*="product-item"], [class*="grid__item"]');
         if (card && !card.querySelector('.ff-save-badge-card')) {
           var cardBadge = document.createElement('span');
           cardBadge.className = 'ff-save-badge-card';
