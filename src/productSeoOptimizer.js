@@ -12,17 +12,16 @@ const shopify = axios.create({
 });
 
 /**
- * Fetch all products from Shopify
+ * Fetch products created after a given ISO date string
  */
-async function fetchAllProducts() {
+async function fetchRecentProducts(createdAtMin) {
   const products = [];
-  let nextPageUrl = `/products.json?limit=250`;
+  let nextPageUrl = `/products.json?limit=250&created_at_min=${encodeURIComponent(createdAtMin)}`;
 
   while (nextPageUrl) {
     const res = await shopify.get(nextPageUrl);
     products.push(...res.data.products);
 
-    // Check for pagination
     const linkHeader = res.headers.link || "";
     const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
     if (nextMatch) {
@@ -177,21 +176,20 @@ async function updateProduct(productId, seoData, images) {
 }
 
 // Main execution
-console.log("Starting Shopify Product SEO Optimizer...");
+const sinceHours = parseInt(process.env.SINCE_HOURS || "48");
+const createdAtMin = new Date(Date.now() - sinceHours * 60 * 60 * 1000).toISOString();
 
-const products = await fetchAllProducts();
-console.log(`Found ${products.length} products to audit`);
+console.log(`Starting Shopify Product SEO Optimizer...`);
+console.log(`Looking for products created in the last ${sinceHours} hours (since ${createdAtMin})`);
+
+const products = await fetchRecentProducts(createdAtMin);
+console.log(`Found ${products.length} recently created products`);
 
 let updated = 0;
 let skipped = 0;
 
-// Only process products that have no description or a very short one (manually added)
-const productsToProcess = products.filter(p => {
-  const descLength = (p.body_html || "").replace(/<[^>]+>/g, "").trim().length;
-  return descLength < 300;
-});
-
-console.log(`${productsToProcess.length} products need descriptions (${products.length - productsToProcess.length} already have one)`);
+const productsToProcess = products;
+console.log(`${productsToProcess.length} products to process`);
 
 for (const product of productsToProcess) {
   console.log(`\nAnalyzing: "${product.title}" (ID: ${product.id})`);

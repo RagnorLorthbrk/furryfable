@@ -1,9 +1,19 @@
 name: Product SEO Optimizer
 
 on:
-  schedule:
-    - cron: "0 3 * * 1"   # Every Monday at 3:00 AM UTC
   workflow_dispatch:
+    inputs:
+      since_hours:
+        description: "Process products created in the last N hours (default: 48)"
+        required: false
+        default: "48"
+  workflow_call:
+    inputs:
+      since_hours:
+        description: "Hours window for recently created products"
+        required: false
+        default: "2"
+        type: string
 
 jobs:
   optimize-products:
@@ -28,3 +38,4 @@ jobs:
           SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
           SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
           SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
+          SINCE_HOURS: ${{ inputs.since_hours || '48' }}

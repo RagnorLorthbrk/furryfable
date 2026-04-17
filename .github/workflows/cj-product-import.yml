@@ -32,3 +32,10 @@ jobs:
           SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+
+  run-seo-optimizer:
+    needs: import-products
+    uses: ./.github/workflows/product-seo.yml
+    with:
+      since_hours: "2"
+    secrets: inherit
