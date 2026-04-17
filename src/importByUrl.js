@@ -31,11 +31,15 @@ function extractPids(urlString) {
     .map(u => u.trim())
     .filter(Boolean)
     .map(u => {
-      // Handle full URLs: https://cjdropshipping.com/product/1234567890
-      const match = u.match(/\/product\/(\d+)/);
-      if (match) return match[1];
-      // Handle bare PIDs
+      // Format 1: .../product/slug-p-GUID.html  →  GUID
+      const guidMatch = u.match(/-p-([A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12})\.html/i);
+      if (guidMatch) return guidMatch[1];
+      // Format 2: .../product/1234567890  →  numeric PID
+      const numericMatch = u.match(/\/product\/(\d+)/);
+      if (numericMatch) return numericMatch[1];
+      // Format 3: bare numeric PID or GUID
       if (/^\d+$/.test(u)) return u;
+      if (/^[A-F0-9-]{36}$/i.test(u)) return u;
       return null;
     })
     .filter(Boolean);
