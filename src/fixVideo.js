@@ -1,7 +1,7 @@
 /**
  * fixVideo.js
  * 1. Removes muted from video Liquid snippets
- * 2. Injects CSS to fix video cropping (object-fit: contain)
+ * 2. Minimal CSS fix for video only (not images)
  */
 
 import axios from "axios";
@@ -43,7 +43,7 @@ async function putAsset(themeId, key, value) {
   console.log(`  ✓ Saved: ${key}`);
 }
 
-// Files most likely to contain muted on video elements
+// All files to scan for muted
 const VIDEO_LIQUID_FILES = [
   "snippets/product-media.liquid",
   "snippets/video.liquid",
@@ -56,8 +56,16 @@ const VIDEO_LIQUID_FILES = [
   "sections/featured-product.liquid",
 ];
 
+// Also scan all JS files for muted
+const VIDEO_JS_FILES = [
+  "assets/media.js",
+  "assets/media-gallery.js",
+  "assets/video-background.js",
+  "assets/product-card.js",
+  "assets/product-form.js",
+];
+
 function removeMuted(content) {
-  // Remove standalone muted attribute (with or without value)
   return content.replace(/\s+muted(?:=['"](?:muted|true)['"])?(?=[\s\/>])/gi, "");
 }
 
@@ -67,86 +75,88 @@ async function main() {
   const theme = await getActiveTheme();
   console.log(`Active theme: "${theme.name}" (ID: ${theme.id})\n`);
 
-  // --- FIX 1: Remove muted from video Liquid files ---
-  console.log("Step 1: Scanning for muted attribute in video Liquid files...");
+  // --- FIX 1: Remove muted ---
+  console.log("Step 1: Scanning for muted in Liquid + JS files...");
   let mutedFixed = 0;
 
-  for (const key of VIDEO_LIQUID_FILES) {
+  for (const key of [...VIDEO_LIQUID_FILES, ...VIDEO_JS_FILES]) {
     const asset = await getAsset(theme.id, key);
-    if (!asset) { console.log(`  skip: ${key} (not found)`); continue; }
+    if (!asset) { console.log(`  skip: ${key}`); continue; }
 
     const content = asset.value;
-    if (!content.toLowerCase().includes("muted")) {
-      console.log(`  ok:   ${key}`);
-      continue;
+    const lower = content.toLowerCase();
+
+    // Find ALL occurrences of muted in context
+    let searchStart = 0;
+    let foundInFile = false;
+    while (true) {
+      const idx = lower.indexOf("muted", searchStart);
+      if (idx === -1) break;
+      const ctx = content.slice(Math.max(0, idx - 100), idx + 100);
+      // Only care about muted as an HTML attribute or JS property, not CSS color vars
+      if (!ctx.includes("foreground-muted") && !ctx.includes("color-muted")) {
+        console.log(`  FOUND in ${key}:`);
+        console.log(`    ...${ctx.replace(/\n/g, " ")}...`);
+        foundInFile = true;
+      }
+      searchStart = idx + 1;
     }
 
-    // Show context around muted
-    const idx = content.toLowerCase().indexOf("muted");
-    const ctx = content.slice(Math.max(0, idx - 80), idx + 80);
-    console.log(`  FOUND muted in ${key}:`);
-    console.log(`    ...${ctx}...`);
-
-    const fixed = removeMuted(content);
-    if (fixed !== content) {
-      await putAsset(theme.id, key, fixed);
-      mutedFixed++;
+    if (foundInFile) {
+      const fixed = removeMuted(content);
+      if (fixed !== content) {
+        await putAsset(theme.id, key, fixed);
+        mutedFixed++;
+        await new Promise(r => setTimeout(r, 500));
+      }
+    } else {
+      console.log(`  ok: ${key}`);
     }
-    await new Promise(r => setTimeout(r, 500));
   }
 
-  if (mutedFixed === 0) {
-    console.log("  No muted attributes found in video Liquid files.");
-    console.log("  (Videos may not be on the tested product — muted will be removed if found when videos are present)\n");
+  // --- FIX 2: Find a product with video via API ---
+  console.log("\nStep 2: Finding products with video media...");
+  const productsRes = await shopify.get("/products.json?limit=250&fields=id,title,media");
+  const withVideo = productsRes.data.products.filter(p =>
+    p.media && p.media.some(m => m.media_type === "video" || m.media_type === "external_video")
+  );
+  if (withVideo.length > 0) {
+    console.log(`  Products with video: ${withVideo.map(p => p.title).join(", ")}`);
+    console.log(`  Test URL: https://${SHOPIFY_STORE_DOMAIN}/products/${withVideo[0].handle}`);
+  } else {
+    console.log("  No products with video media found via API.");
   }
 
-  // --- FIX 2: CSS override for video crop ---
-  console.log("\nStep 2: Injecting CSS fix for video crop...");
+  // --- FIX 3: Minimal CSS - video only, no images ---
+  console.log("\nStep 3: Updating CSS (video only, not images)...");
 
   const themeLiquid = await getAsset(theme.id, "layout/theme.liquid");
   if (!themeLiquid) { console.error("Cannot load theme.liquid"); process.exit(1); }
 
-  const VIDEO_FIX_CSS = `
-<!-- FurryFable Video Fix -->
+  // Minimal, targeted CSS - ONLY video elements, nothing else
+  const VIDEO_FIX_CSS = `<!-- FurryFable Video Fix -->
 <style>
-  /* Force contain so videos are never cropped */
-  .product-media-container video,
-  .product-media video,
-  [class*="media"] video,
-  video {
-    object-fit: contain !important;
-    width: 100% !important;
-    height: auto !important;
-    max-height: 70vh;
-    background: #000;
-  }
-  /* Override the --product-media-fit CSS variable for videos */
-  .product-media-container:has(video) {
-    --product-media-fit: contain !important;
-  }
+  /* Only targets <video> elements — does NOT affect images */
+  video { object-fit: contain !important; }
 </style>
 <!-- /FurryFable Video Fix -->`;
 
   let themeContent = themeLiquid.value;
 
   if (themeContent.includes("FurryFable Video Fix")) {
-    // Update existing block
     themeContent = themeContent.replace(
       /<!-- FurryFable Video Fix -->[\s\S]*?<!-- \/FurryFable Video Fix -->/,
-      VIDEO_FIX_CSS.trim()
+      VIDEO_FIX_CSS
     );
-    console.log("  ✓ Updated existing video CSS in theme.liquid");
+    console.log("  ✓ Updated video CSS (minimal, video only)");
   } else {
-    themeContent = themeContent.replace("</head>", VIDEO_FIX_CSS.trim() + "\n</head>");
-    console.log("  ✓ Injected video CSS into theme.liquid");
+    themeContent = themeContent.replace("</head>", VIDEO_FIX_CSS + "\n</head>");
+    console.log("  ✓ Injected minimal video CSS");
   }
 
   await putAsset(theme.id, "layout/theme.liquid", themeContent);
 
-  console.log("\n=== Done ===");
-  console.log("- Video crop fixed via CSS (object-fit: contain)");
-  console.log(`- Muted removed from ${mutedFixed} file(s)`);
-  console.log("Hard refresh your store (Cmd+Shift+R) to verify.");
+  console.log(`\n=== Done: muted removed from ${mutedFixed} file(s), CSS fixed ===`);
 }
 
 main().catch(err => {
