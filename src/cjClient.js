@@ -192,28 +192,39 @@ async function scrapeProductsFromWebsite(page = 1) {
 // METHOD 2: API /product/list (V1) + listV2 with saleStatus=3
 // ═══════════════════════════════════════
 
-async function searchAPIv2(categoryId, page = 1) {
-  try {
-    const res = await cjCall(() =>
-      cj.get("/product/listV2", {
-        params: {
-          categoryId,
-          countryCode: "US",
-          saleStatus: "3",
-          verifiedWarehouse: 1,
-          page,
-          size: 100,
-          orderBy: 1,
-          sort: "desc"
+async function searchAPIv2(keyword, categoryId, page = 1) {
+  // Try multiple param combinations — CJ support pointed to listV2
+  const paramSets = [
+    // Try 1: keyword + US + saleStatus (Gemini suggestion)
+    { keyWord: keyword, countryCode: "US", saleStatus: "3", page, size: 50, orderBy: 1, sort: "desc" },
+    // Try 2: categoryId + US + saleStatus
+    { categoryId, countryCode: "US", saleStatus: "3", page, size: 50, orderBy: 1, sort: "desc" },
+    // Try 3: keyword + US only
+    { keyWord: keyword, countryCode: "US", page, size: 50, orderBy: 1, sort: "desc" },
+    // Try 4: keyword only (no country filter)
+    { keyWord: keyword, page, size: 50, orderBy: 1, sort: "desc" }
+  ];
+
+  for (let i = 0; i < paramSets.length; i++) {
+    try {
+      const res = await cjCall(() =>
+        cj.get("/product/listV2", { params: paramSets[i] })
+      );
+      if (res.data.result) {
+        const list = res.data.data?.list || [];
+        if (list.length > 0) {
+          console.log(`    listV2 param set ${i + 1} returned ${list.length} products`);
+          return list;
         }
-      })
-    );
-    if (res.data.result) {
-      return res.data.data?.list || [];
+        console.log(`    listV2 param set ${i + 1}: 0 results`);
+      } else {
+        console.log(`    listV2 param set ${i + 1} failed: ${res.data.message}`);
+      }
+    } catch (err) {
+      if (err.response?.status === 429) throw err;
+      console.log(`    listV2 param set ${i + 1} error: ${err.response?.status} ${err.response?.data?.message || err.message}`);
     }
-  } catch (err) {
-    if (err.response?.status === 429) throw err;
-    console.log(`    listV2 not available: ${err.response?.status || err.message}`);
+    await new Promise(r => setTimeout(r, 1000));
   }
   return [];
 }
@@ -295,15 +306,17 @@ export async function searchPetProducts() {
     return allProducts;
   }
 
-  // ═══ METHOD 2: API listV2 with saleStatus=3 ═══
-  console.log(`\n  Method 2: API listV2 with saleStatus=3 (store now verified)...`);
+  // ═══ METHOD 2: API listV2 (CJ support recommended this) ═══
+  console.log(`\n  Method 2: API listV2 (CJ support recommended)...`);
   try {
     const PET_CAT = "2409110611570657700";
-    for (let page = 1; page <= 2; page++) {
-      const products = await searchAPIv2(PET_CAT, page);
+    const keywords = ["dog toy", "cat toy", "pet harness", "dog bed", "pet supplies"];
+    for (const kw of keywords) {
+      process.stdout.write(`    "${kw}"... `);
+      const products = await searchAPIv2(kw, PET_CAT, 1);
       const added = addProducts(products);
-      console.log(`    Page ${page}: ${products.length} returned, ${added} new (total: ${allProducts.length})`);
-      if (products.length === 0) break;
+      console.log(`${added} new (total: ${allProducts.length})`);
+      if (allProducts.length >= 20) break;
       await new Promise(r => setTimeout(r, 2000));
     }
   } catch (err) {
