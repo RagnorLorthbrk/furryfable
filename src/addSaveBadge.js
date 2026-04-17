@@ -58,7 +58,7 @@ const SAVE_BADGE_STYLE = `
 <style>
   .ff-save-badge {
     display: inline-block;
-    background: #e74c3c;
+    background: #27ae60;
     color: #fff;
     font-weight: 700;
     font-size: 0.85em;
@@ -73,7 +73,7 @@ const SAVE_BADGE_STYLE = `
     position: absolute;
     top: 10px;
     left: 10px;
-    background: #e74c3c;
+    background: #27ae60;
     color: #fff;
     font-weight: 700;
     font-size: 0.78em;
