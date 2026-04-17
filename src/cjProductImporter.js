@@ -543,7 +543,7 @@ async function main() {
   const selections = await selectBestProducts(cjProducts, existingTitles);
   console.log(`AI selected ${selections.length} products\n`);
 
-  // Import each selected product — no need to re-validate, already confirmed available
+  // Import each selected product
   let imported = 0;
 
   for (const sel of selections) {
@@ -553,6 +553,23 @@ async function main() {
       console.log(`  CJ Price: $${sel.product.sellPrice} -> Store: $${(parseFloat(sel.product.sellPrice) * 2).toFixed(2)}`);
       console.log(`  Collection: ${sel.collection}`);
       console.log(`  Reason: ${sel.reason}`);
+
+      // Verify product is still available on CJ before importing
+      console.log(`  Verifying product availability...`);
+      const details = await getProductDetails(sel.product.pid);
+      if (!details) {
+        console.log(`  ⚠️ SKIPPED — product not found / removed on CJ (pid: ${sel.product.pid})`);
+        continue;
+      }
+      // Check if any variant has inventory
+      const variants = details.variants || [];
+      const totalStock = variants.reduce((sum, v) => sum + (parseInt(v.variantStock) || 0), 0);
+      if (variants.length > 0 && totalStock === 0) {
+        console.log(`  ⚠️ SKIPPED — all variants out of stock (pid: ${sel.product.pid})`);
+        continue;
+      }
+      console.log(`  ✓ Available — ${variants.length} variants, ${totalStock} total stock`);
+      sel.product._cachedDetails = details;
 
       const shopifyProduct = await createShopifyProduct(sel.product, sel);
 
