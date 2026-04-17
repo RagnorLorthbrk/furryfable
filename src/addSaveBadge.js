@@ -84,52 +84,70 @@ const SAVE_BADGE_STYLE = `
   }
 </style>
 <script>
-  // FurryFable Save Badge — dynamic injection
+  // FurryFable Save Badge — universal injection
   (function() {
-    function calcSavePct(compare, price) {
-      if (!compare || compare <= price) return 0;
-      return Math.round((compare - price) / compare * 100);
+    function parsePrice(text) {
+      var m = text.replace(/,/g, '').match(/[\d]+\.?\d*/);
+      return m ? parseFloat(m[0]) : 0;
     }
-    function injectBadgeNearPrice(priceEl, pct) {
-      if (!pct) return;
-      if (priceEl.parentNode.querySelector('.ff-save-badge')) return; // already there
-      var badge = document.createElement('span');
-      badge.className = 'ff-save-badge';
-      badge.textContent = 'Save ' + pct + '%';
-      priceEl.parentNode.insertBefore(badge, priceEl.nextSibling);
+    function calcPct(compare, sale) {
+      if (!compare || !sale || compare <= sale) return 0;
+      return Math.round((compare - sale) / compare * 100);
+    }
+    function alreadyHasBadge(el) {
+      return el.querySelector('.ff-save-badge') || el.querySelector('.ff-save-badge-card');
     }
 
     function run() {
-      // Product page — use Shopify global
-      if (typeof window.ShopifyAnalytics !== 'undefined' && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.product) {
-        var meta = window.ShopifyAnalytics.meta.product;
-        var compare = meta.compareAtPrice ? meta.compareAtPrice / 100 : 0;
-        var price = meta.price ? meta.price / 100 : 0;
-        var pct = calcSavePct(compare, price);
-        if (pct > 0) {
-          document.querySelectorAll('.price--on-sale .price__regular, .price--on-sale .price-item--sale, [class*="price-item--sale"], .price__sale').forEach(function(el) {
-            injectBadgeNearPrice(el, pct);
+      // Universal: find every <s> or <del> that looks like a strikethrough price
+      document.querySelectorAll('s, del').forEach(function(strikeEl) {
+        var comparePrice = parsePrice(strikeEl.textContent);
+        if (!comparePrice) return;
+
+        // Find the actual sale price nearby — sibling or parent sibling
+        var parent = strikeEl.parentNode;
+        if (!parent) return;
+
+        // Look for a non-strikethrough price in the same container
+        var salePriceText = '';
+        parent.childNodes.forEach(function(node) {
+          if (node === strikeEl) return;
+          var t = (node.textContent || '').trim();
+          if (/[\$£€]?\s*[\d]+[\.,]?\d*/.test(t) && parsePrice(t) > 0) {
+            salePriceText = t;
+          }
+        });
+        // Fallback: look at parent's parent
+        if (!salePriceText && parent.parentNode) {
+          parent.parentNode.childNodes.forEach(function(node) {
+            if (node.contains && node.contains(strikeEl)) return;
+            var t = (node.textContent || '').trim();
+            if (/[\$£€]?\s*[\d]+[\.,]?\d*/.test(t) && parsePrice(t) > 0) {
+              salePriceText = t;
+            }
           });
         }
-      }
 
-      // Collection / related products cards — look for sale price elements
-      document.querySelectorAll('[data-compare-at-price]').forEach(function(el) {
-        var compare = parseFloat(el.getAttribute('data-compare-at-price')) / 100;
-        var priceEl = el.closest('[data-product-card], .card, .product-card, li.grid__item')
-          ? el.closest('[data-product-card], .card, .product-card, li.grid__item').querySelector('[data-price], .price-item--sale, .price__sale')
-          : null;
-        var price = priceEl ? parseFloat(priceEl.textContent.replace(/[^0-9.]/g, '')) : 0;
-        var pct = calcSavePct(compare, price);
-        if (pct > 0) {
-          var container = el.closest('[data-product-card], .card, .product-card, li.grid__item');
-          if (container && !container.querySelector('.ff-save-badge-card')) {
-            var badge = document.createElement('span');
-            badge.className = 'ff-save-badge-card';
-            badge.textContent = 'Save ' + pct + '%';
-            container.style.position = 'relative';
-            container.prepend(badge);
-          }
+        var salePrice = parsePrice(salePriceText);
+        var pct = calcPct(comparePrice, salePrice);
+        if (!pct) return;
+
+        // Inline badge next to strikethrough (product page)
+        if (!parent.querySelector('.ff-save-badge')) {
+          var badge = document.createElement('span');
+          badge.className = 'ff-save-badge';
+          badge.textContent = 'Save ' + pct + '%';
+          strikeEl.insertAdjacentElement('afterend', badge);
+        }
+
+        // Card badge (collection / related products)
+        var card = strikeEl.closest('li, article, [class*="card"], [class*="product-item"], [class*="grid__item"]');
+        if (card && !alreadyHasBadge(card)) {
+          var cardBadge = document.createElement('span');
+          cardBadge.className = 'ff-save-badge-card';
+          cardBadge.textContent = 'Save ' + pct + '%';
+          card.style.position = 'relative';
+          card.prepend(cardBadge);
         }
       });
     }
@@ -139,10 +157,6 @@ const SAVE_BADGE_STYLE = `
     } else {
       run();
     }
-
-    // Re-run for dynamic content (quick view, etc.)
-    var observer = new MutationObserver(function() { run(); });
-    observer.observe(document.body, { childList: true, subtree: true });
   })();
 </script>
 <!-- /FurryFable Save Badge -->`;
