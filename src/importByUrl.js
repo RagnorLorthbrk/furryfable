@@ -438,10 +438,7 @@ async function main() {
 
       const variants = details.variants || [];
       // Note: CJ's /product/query doesn't reliably return variantStock — user has verified stock manually
-      console.log(`  ✓ Found ${variants.length} variants`);
-
-      console.log(`  ✓ Found: "${details.productNameEn || details.productName}"`);
-      console.log(`  Variants: ${variants.length}, Stock: ${totalStock}`);
+      console.log(`  ✓ Found: "${details.productNameEn || details.productName}" — ${variants.length} variants`);
 
       // AI analysis
       console.log("  Analyzing with Gemini...");
