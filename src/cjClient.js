@@ -287,11 +287,11 @@ export async function searchPetProducts() {
     return added;
   }
 
-  // ═══ METHOD 1: Website scraping (most reliable — shows same data you see browsing) ═══
+  // ═══ METHOD 1: Website scraping (live products only) ═══
   console.log("  Method 1: Scraping CJ website (US warehouse pet supplies)...");
   try {
-    for (let page = 1; page <= 3; page++) {
-      process.stdout.write(`    Page ${page}/3... `);
+    for (let page = 1; page <= 5; page++) {
+      process.stdout.write(`    Page ${page}/5... `);
       const products = await scrapeProductsFromWebsite(page);
       const added = addProducts(products);
       console.log(`${products.length} scraped, ${added} new (total: ${allProducts.length})`);
@@ -307,69 +307,25 @@ export async function searchPetProducts() {
     return allProducts;
   }
 
-  // ═══ METHOD 2: API listV2 (CJ support recommended this) ═══
-  console.log(`\n  Method 2: API listV2 (CJ support recommended)...`);
-  try {
-    const PET_CAT = "2409110611570657700";
-    const keywords = ["dog toy", "cat toy", "pet harness", "dog bed", "pet supplies"];
-    for (const kw of keywords) {
-      process.stdout.write(`    "${kw}"... `);
-      const products = await searchAPIv2(kw, PET_CAT, 1);
-      const added = addProducts(products);
-      console.log(`${added} new (total: ${allProducts.length})`);
-      if (allProducts.length >= 20) break;
-      await new Promise(r => setTimeout(r, 2000));
-    }
-  } catch (err) {
-    console.log(`    listV2 failed: ${err.message}`);
-  }
-
-  if (allProducts.length >= 20) {
-    console.log(`\n  ✅ Found ${allProducts.length} products via API listV2`);
-    return allProducts;
-  }
-
-  // ═══ METHOD 3: API V1 with category IDs ═══
-  console.log(`\n  Method 3: API /product/list V1 with pet category IDs...`);
-
-  // First get category IDs
-  const petCats = await getPetCategoryIds();
-  if (petCats.length > 0) {
-    console.log(`    Found ${petCats.length} pet categories`);
-    // Try top-level pet category
-    const topCat = petCats[0];
+  // ═══ METHOD 2: API V1 — pet supplies category, multiple pages ═══
+  console.log(`\n  Method 2: API /product/list — pet supplies category (ID: 2409110611570657700)...`);
+  const PET_CAT_ID = "2409110611570657700";
+  for (let page = 1; page <= 5; page++) {
     try {
-      const products = await searchAPI(topCat.id, null, 1);
+      process.stdout.write(`    Page ${page}/5... `);
+      const products = await searchAPI(PET_CAT_ID, null, page);
       const added = addProducts(products);
-      console.log(`    ${topCat.name}: ${products.length} returned, ${added} new`);
+      console.log(`${products.length} returned, ${added} new (total: ${allProducts.length})`);
+      if (products.length === 0) break;
+      await new Promise(r => setTimeout(r, 2000));
     } catch (err) {
-      console.log(`    Failed: ${err.message}`);
-    }
-    await new Promise(r => setTimeout(r, 2000));
-  }
-
-  // Try keyword search as well
-  if (allProducts.length < 20) {
-    console.log("\n  Method 4: API keyword search...");
-    const keywords = ["dog toy", "cat toy", "pet harness", "dog bed", "pet feeder", "cat tree"];
-    for (const kw of keywords) {
-      try {
-        process.stdout.write(`    "${kw}"... `);
-        const products = await searchAPI(null, kw, 1);
-        const added = addProducts(products);
-        console.log(`${products.length} found, ${added} new`);
-        await new Promise(r => setTimeout(r, 2000));
-      } catch (err) {
-        console.log(`failed: ${err.message}`);
-        if (err.response?.status === 429) {
-          await new Promise(r => setTimeout(r, 15000));
-        }
-      }
-      if (allProducts.length >= 30) break;
+      console.log(`failed: ${err.message}`);
+      if (err.response?.status === 429) await new Promise(r => setTimeout(r, 15000));
+      break;
     }
   }
 
-  // Filter: prefer products with listedNum > 0
+  // Filter: prefer products with listedNum > 0 (actively listed by other stores)
   const verified = allProducts.filter(p => p.listedNum > 0);
   console.log(`\n  Result: ${allProducts.length} total, ${verified.length} with active listings`);
 
