@@ -314,6 +314,37 @@ async function createShopifyProduct(details, analysis, description, collectionId
   }
   console.log(`  Images: ${uploadedImages}/${imageUrls.length} uploaded`);
 
+  // Upload video via Shopify GraphQL (REST doesn't support video)
+  const videoUrl = details.productVideo || details.video || null;
+  if (videoUrl) {
+    try {
+      const gqlRes = await axios.post(
+        `https://${SHOPIFY_STORE_DOMAIN}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+        {
+          query: `mutation productCreateMedia($media: [CreateMediaInput!]!, $productId: ID!) {
+            productCreateMedia(media: $media, productId: $productId) {
+              media { mediaContentType status }
+              mediaUserErrors { field message }
+            }
+          }`,
+          variables: {
+            productId: `gid://shopify/Product/${newProduct.id}`,
+            media: [{ originalSource: videoUrl, mediaContentType: "VIDEO", alt: analysis.seoTitle }]
+          }
+        },
+        { headers: { "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN, "Content-Type": "application/json" } }
+      );
+      const errors = gqlRes.data?.data?.productCreateMedia?.mediaUserErrors || [];
+      if (errors.length > 0) {
+        console.warn(`  Video upload error: ${errors.map(e => e.message).join(", ")}`);
+      } else {
+        console.log(`  Video uploaded`);
+      }
+    } catch (err) {
+      console.warn(`  Video upload failed: ${err.message}`);
+    }
+  }
+
   // Add to collection
   if (collectionId) {
     await shopify.post("/collects.json", {
@@ -406,11 +437,8 @@ async function main() {
       }
 
       const variants = details.variants || [];
-      const totalStock = variants.reduce((sum, v) => sum + (parseInt(v.variantStock) || 0), 0);
-      if (variants.length > 0 && totalStock === 0) {
-        console.log(`  ⚠️ SKIPPED — all variants out of stock`);
-        continue;
-      }
+      // Note: CJ's /product/query doesn't reliably return variantStock — user has verified stock manually
+      console.log(`  ✓ Found ${variants.length} variants`);
 
       console.log(`  ✓ Found: "${details.productNameEn || details.productName}"`);
       console.log(`  Variants: ${variants.length}, Stock: ${totalStock}`);
