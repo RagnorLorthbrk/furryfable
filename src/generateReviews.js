@@ -55,24 +55,63 @@ const LAST_NAMES = [
 
 const EMAIL_DOMAINS = [
   "gmail.com","yahoo.com","hotmail.com","outlook.com","icloud.com","aol.com","live.com",
+  "me.com","protonmail.com","comcast.net","att.net","verizon.net","msn.com",
 ];
+
+const PET_WORDS = ["dog","cat","pup","kitty","pets","pawz","furry","pooch","bark","meow","mutt","fido","whiskers","rex"];
+const ADJECTIVES = ["happy","lucky","cool","sweet","wild","sunny","jolly","real","true","simple","daily","best"];
 
 function randomFrom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function ri(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function generateEmail(firstName, lastName) {
   const fn = firstName.toLowerCase();
   const ln = lastName.toLowerCase();
   const domain = randomFrom(EMAIL_DOMAINS);
-  const num = Math.random() > 0.6 ? Math.floor(Math.random() * 99) + 1 : "";
+  const year = ri(1975, 2002);
+  const num2 = ri(10, 99);
+  const num3 = ri(100, 999);
+  const smallNum = ri(1, 9);
+  const pet = randomFrom(PET_WORDS);
+  const adj = randomFrom(ADJECTIVES);
+
+  // Large pool of patterns — randomly pick one each time, no dominant pattern
   const patterns = [
-    `${fn}.${ln}${num}@${domain}`,
-    `${fn}${ln}${num}@${domain}`,
+    `${fn}.${ln}@${domain}`,
+    `${fn}${ln}@${domain}`,
     `${fn}_${ln}@${domain}`,
-    `${fn}${num}@${domain}`,
-    `${ln}.${fn}@${domain}`,
-    `${fn[0]}${ln}${num}@${domain}`,
+    `${fn}${ln}${num2}@${domain}`,
+    `${fn}.${ln}${num2}@${domain}`,
+    `${fn}${year}@${domain}`,
+    `${fn}.${year}@${domain}`,
+    `${ln}${fn[0]}${num2}@${domain}`,
+    `${fn[0]}${ln}@${domain}`,
+    `${fn[0]}${ln}${num2}@${domain}`,
+    `${fn[0]}${ln}${year}@${domain}`,
+    `${fn}${smallNum}${ln}@${domain}`,
+    `${adj}${fn}@${domain}`,
+    `${fn}.${adj}@${domain}`,
+    `${pet}lover.${fn}@${domain}`,
+    `${fn}${pet}${num2}@${domain}`,
+    `${fn}the${pet}@${domain}`,
+    `${adj}${pet}${num2}@${domain}`,
+    `${ln}.family@${domain}`,
+    `${fn}fam${num2}@${domain}`,
+    `${fn}${num3}@${domain}`,
+    `${adj}${ln}@${domain}`,
+    `${fn}.${ln}.${smallNum}@${domain}`,
+    `${pet}mom.${fn}@${domain}`,
+    `${pet}dad${num2}@${domain}`,
+    `${fn}xo@${domain}`,
+    `real${fn}${num2}@${domain}`,
+    `the${fn}${ln}@${domain}`,
+    `${fn}lives@${domain}`,
+    `${fn}${ln}.home@${domain}`,
   ];
   return randomFrom(patterns);
 }
@@ -92,8 +131,23 @@ function pickRating() {
 
 async function generateReviewsForProduct(product) {
   const count = Math.floor(Math.random() * 6) + 5; // 5-10 reviews
-  const fiveStarCount = Math.round(count * 0.90);
-  const fourStarCount = count - fiveStarCount;
+
+  // Randomly decide rating distribution per product — feels more organic
+  const roll = Math.random();
+  let fiveStarCount, fourStarCount;
+  if (roll < 0.35) {
+    // All 5-star (35% of products)
+    fiveStarCount = count;
+    fourStarCount = 0;
+  } else if (roll < 0.75) {
+    // ~90% 5-star, rest 4-star
+    fiveStarCount = Math.max(count - 1, Math.round(count * 0.90));
+    fourStarCount = count - fiveStarCount;
+  } else {
+    // ~80% 5-star, rest 4-star (20% of products — still very good)
+    fiveStarCount = Math.round(count * 0.80);
+    fourStarCount = count - fiveStarCount;
+  }
 
   const ratings = [
     ...Array(fiveStarCount).fill(5),
