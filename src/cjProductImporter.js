@@ -585,14 +585,10 @@ async function main() {
         console.log(`  ⚠️ SKIPPED — product not found / removed on CJ (pid: ${sel.product.pid})`);
         continue;
       }
-      // Check if any variant has inventory
+      // CJ's /product/query doesn't reliably return variantStock — result:false already
+      // catches removed products above. Trust that listV2 only returns live products.
       const variants = details.variants || [];
-      const totalStock = variants.reduce((sum, v) => sum + (parseInt(v.variantStock) || 0), 0);
-      if (variants.length > 0 && totalStock === 0) {
-        console.log(`  ⚠️ SKIPPED — all variants out of stock (pid: ${sel.product.pid})`);
-        continue;
-      }
-      console.log(`  ✓ Available — ${variants.length} variants, ${totalStock} total stock`);
+      console.log(`  ✓ Available — ${variants.length} variants`);
       sel.product._cachedDetails = details;
 
       const shopifyProduct = await createShopifyProduct(sel.product, sel);
