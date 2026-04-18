@@ -308,9 +308,31 @@ export async function searchPetProducts() {
     return allProducts;
   }
 
-  // ═══ METHOD 2: API V1 — pet supplies category, multiple pages ═══
-  console.log(`\n  Method 2: API /product/list — pet supplies category (ID: 2409110611570657700)...`);
+  // ═══ METHOD 2: listV2 (CJ confirmed: returns only LIVE products) ═══
+  console.log(`\n  Method 2: /product/listV2 (live products only, countryCode=US)...`);
   const PET_CAT_ID = "2409110611570657700";
+  for (let page = 1; page <= 5; page++) {
+    try {
+      process.stdout.write(`    Page ${page}/5... `);
+      const products = await searchAPIv2("pet", PET_CAT_ID, page);
+      const added = addProducts(products);
+      console.log(`${products.length} returned, ${added} new (total: ${allProducts.length})`);
+      if (products.length === 0) break;
+      await new Promise(r => setTimeout(r, 2000));
+    } catch (err) {
+      console.log(`failed: ${err.message}`);
+      if (err.response?.status === 429) await new Promise(r => setTimeout(r, 15000));
+      break;
+    }
+  }
+
+  if (allProducts.length >= 20) {
+    console.log(`\n  ✅ Found ${allProducts.length} live products via listV2`);
+    return allProducts;
+  }
+
+  // ═══ METHOD 3: V1 API fallback (may include removed products — last resort) ═══
+  console.log(`\n  Method 3 (fallback): API /product/list — pet supplies category...`);
   for (let page = 1; page <= 5; page++) {
     try {
       process.stdout.write(`    Page ${page}/5... `);
@@ -326,9 +348,5 @@ export async function searchPetProducts() {
     }
   }
 
-  // Filter: prefer products with listedNum > 0 (actively listed by other stores)
-  const verified = allProducts.filter(p => p.listedNum > 0);
-  console.log(`\n  Result: ${allProducts.length} total, ${verified.length} with active listings`);
-
-  return verified.length >= 10 ? verified : allProducts;
+  return allProducts;
 }
