@@ -190,20 +190,21 @@ async function scrapeProductsFromWebsite(page = 1) {
 }
 
 // ═══════════════════════════════════════
-// METHOD 2: API /product/list (V1) + listV2 with saleStatus=3
+// METHOD 2: /product/listV2 — CJ confirmed: returns only LIVE products, no saleStatus needed
+// Correct params per CJ support: page, size, sort=asc, orderBy=2, countryCode=US
 // ═══════════════════════════════════════
 
 async function searchAPIv2(keyword, categoryId, page = 1) {
-  // Try multiple param combinations — CJ support pointed to listV2
+  const base = { page, size: 50, sort: "asc", orderBy: 2, countryCode: "US" };
   const paramSets = [
-    // Try 1: keyword + US + saleStatus (Gemini suggestion)
-    { keyWord: keyword, countryCode: "US", saleStatus: "3", page, size: 50, orderBy: 1, sort: "desc" },
-    // Try 2: categoryId + US + saleStatus
-    { categoryId, countryCode: "US", saleStatus: "3", page, size: 50, orderBy: 1, sort: "desc" },
-    // Try 3: keyword + US only
-    { keyWord: keyword, countryCode: "US", page, size: 50, orderBy: 1, sort: "desc" },
-    // Try 4: keyword only (no country filter)
-    { keyWord: keyword, page, size: 50, orderBy: 1, sort: "desc" }
+    // Try 1: Exactly what CJ support showed — no keyword, just US (returns all live US products)
+    { ...base },
+    // Try 2: keyword + US (correct sort params)
+    { ...base, keyWord: keyword },
+    // Try 3: categoryId + US
+    { ...base, categoryId },
+    // Try 4: keyword only, no country filter
+    { page, size: 50, sort: "asc", orderBy: 2, keyWord: keyword },
   ];
 
   for (let i = 0; i < paramSets.length; i++) {
