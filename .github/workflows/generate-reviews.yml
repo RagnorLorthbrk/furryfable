@@ -1,0 +1,31 @@
+name: Generate Reviews Excel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate reviews
+        env:
+          SHOPIFY_STORE_DOMAIN: ${{ secrets.SHOPIFY_STORE_DOMAIN }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node src/generateReviews.js
+
+      - name: Upload Excel as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: furryfable-reviews
+          path: furryfable-reviews.xlsx
+          retention-days: 7
