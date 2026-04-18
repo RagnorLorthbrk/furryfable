@@ -234,27 +234,62 @@ async function getAllProducts() {
   return products;
 }
 
+async function getExistingReviewCount(shopifyProductId, shopDomain, apiToken) {
+  try {
+    const res = await axios.get("https://judge.me/api/v1/reviews", {
+      params: {
+        api_token: apiToken,
+        shop_domain: shopDomain,
+        product_id: shopifyProductId,
+        per_page: 1,
+      },
+      timeout: 8000,
+    });
+    return res.data?.reviews?.length > 0
+      ? (res.data?.total || res.data?.reviews?.length)
+      : 0;
+  } catch {
+    return 0; // if can't check, generate anyway
+  }
+}
+
 async function main() {
   console.log("=== FurryFable: Generate Reviews ===\n");
+
+  const JUDGEME_TOKEN = process.env.JUDGEME_API_TOKEN;
+  const shopDomain = process.env.SHOPIFY_STORE_DOMAIN;
 
   const products = await getAllProducts();
   console.log(`Found ${products.length} products\n`);
 
   const allRows = [];
   let done = 0;
+  let skipped = 0;
 
   for (const product of products) {
     try {
+      // Check existing reviews first
+      if (JUDGEME_TOKEN) {
+        const existing = await getExistingReviewCount(product.id, shopDomain, JUDGEME_TOKEN);
+        if (existing > 0) {
+          console.log(`  SKIP [${product.id}] "${product.title}" — already has ${existing} reviews`);
+          skipped++;
+          continue;
+        }
+      }
+
       const reviews = await generateReviewsForProduct(product);
       allRows.push(...reviews);
       done++;
-      console.log(`  [${done}/${products.length}] "${product.title}" — ${reviews.length} reviews`);
-      // Respect Gemini rate limits
+      console.log(`  [${done}] "${product.title}" — ${reviews.length} reviews generated`);
       await new Promise(r => setTimeout(r, 1200));
     } catch (err) {
       console.log(`  ✗ "${product.title}": ${err.message}`);
     }
   }
+
+  console.log(`\nSkipped ${skipped} products (already have reviews)`);
+  console.log(`Generating Excel for ${done} products...`);
 
   // Write Excel
   const headers = ["title","body","rating","review_date","reviewer_name","reviewer_email","product_id","product_handle","reply","picture_urls"];
