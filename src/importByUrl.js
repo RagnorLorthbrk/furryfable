@@ -2,6 +2,70 @@ import axios from "axios";
 import { google } from "googleapis";
 import { getAccessToken, getProductDetails } from "./cjClient.js";
 
+const TAXONOMY_MAP = {
+  "dog toy": "gid://shopify/TaxonomyCategory/sg-4-14-2-16",
+  "dog toys": "gid://shopify/TaxonomyCategory/sg-4-14-2-16",
+  "dog harness": "gid://shopify/TaxonomyCategory/sg-4-14-2-6",
+  "dog leash": "gid://shopify/TaxonomyCategory/sg-4-14-2-6",
+  "dog collar": "gid://shopify/TaxonomyCategory/sg-4-14-2-5",
+  "dog bed": "gid://shopify/TaxonomyCategory/sg-4-14-2-1",
+  "dog apparel": "gid://shopify/TaxonomyCategory/sg-4-14-2-2",
+  "dog grooming": "gid://shopify/TaxonomyCategory/sg-4-14-2-8",
+  "dog nail": "gid://shopify/TaxonomyCategory/sg-4-14-2-8",
+  "dog comb": "gid://shopify/TaxonomyCategory/sg-4-14-2-8",
+  "dog brush": "gid://shopify/TaxonomyCategory/sg-4-14-2-8",
+  "dog clipper": "gid://shopify/TaxonomyCategory/sg-4-14-2-8",
+  "dog shaver": "gid://shopify/TaxonomyCategory/sg-4-14-2-8",
+  "dog carrier": "gid://shopify/TaxonomyCategory/sg-4-14-2-4",
+  "dog mat": "gid://shopify/TaxonomyCategory/sg-4-14-2-1",
+  "dog pad": "gid://shopify/TaxonomyCategory/sg-4-14-2-1",
+  "dog training": "gid://shopify/TaxonomyCategory/sg-4-14-2-18",
+  "dog bowl": "gid://shopify/TaxonomyCategory/sg-4-14-2-9",
+  "dog water": "gid://shopify/TaxonomyCategory/sg-4-14-2-9",
+  "cat toy": "gid://shopify/TaxonomyCategory/sg-4-14-1-14",
+  "cat toys": "gid://shopify/TaxonomyCategory/sg-4-14-1-14",
+  "cat collar": "gid://shopify/TaxonomyCategory/sg-4-14-1-4",
+  "cat bed": "gid://shopify/TaxonomyCategory/sg-4-14-1-1",
+  "cat furniture": "gid://shopify/TaxonomyCategory/sg-4-14-1-6",
+  "cat tree": "gid://shopify/TaxonomyCategory/sg-4-14-1-6",
+  "cat wall": "gid://shopify/TaxonomyCategory/sg-4-14-1-6",
+  "cat mattress": "gid://shopify/TaxonomyCategory/sg-4-14-1-1",
+  "cat nest": "gid://shopify/TaxonomyCategory/sg-4-14-1-1",
+  "cat grooming": "gid://shopify/TaxonomyCategory/sg-4-14-1-8",
+  "cat litter": "gid://shopify/TaxonomyCategory/sg-4-14-1-10",
+  "cat feeder": "gid://shopify/TaxonomyCategory/sg-4-14-1-7",
+  "cat water": "gid://shopify/TaxonomyCategory/sg-4-14-1-7",
+  "pet toy": "gid://shopify/TaxonomyCategory/sg-4-14-16",
+  "pet bed": "gid://shopify/TaxonomyCategory/sg-4-14-1",
+  "pet grooming": "gid://shopify/TaxonomyCategory/sg-4-14-9",
+  "pet apparel": "gid://shopify/TaxonomyCategory/sg-4-14-2",
+  "pet harness": "gid://shopify/TaxonomyCategory/sg-4-14-2-6",
+  "pet collar": "gid://shopify/TaxonomyCategory/sg-4-14-2-5",
+  "pet leash": "gid://shopify/TaxonomyCategory/sg-4-14-2-6",
+  "pet carrier": "gid://shopify/TaxonomyCategory/sg-4-14-3",
+  "pet mat": "gid://shopify/TaxonomyCategory/sg-4-14-1",
+  "pet pad": "gid://shopify/TaxonomyCategory/sg-4-14-1",
+  "pet water": "gid://shopify/TaxonomyCategory/sg-4-14-9",
+  "pet feeder": "gid://shopify/TaxonomyCategory/sg-4-14-9",
+  "pet training": "gid://shopify/TaxonomyCategory/sg-4-14-16",
+  "harness and leash": "gid://shopify/TaxonomyCategory/sg-4-14-2-6",
+  "safety": "gid://shopify/TaxonomyCategory/sg-4-14-16",
+  "anxiety": "gid://shopify/TaxonomyCategory/sg-4-14-16",
+};
+
+function findTaxonomyId(productType, title) {
+  const search = `${productType} ${title}`.toLowerCase();
+  let bestKey = "";
+  let bestId = null;
+  for (const [key, id] of Object.entries(TAXONOMY_MAP)) {
+    if (search.includes(key) && key.length > bestKey.length) {
+      bestKey = key;
+      bestId = id;
+    }
+  }
+  return bestId || "gid://shopify/TaxonomyCategory/sg-4-14";
+}
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const { SHOPIFY_STORE_DOMAIN, SHOPIFY_ACCESS_TOKEN, SHOPIFY_API_VERSION = "2026-01" } = process.env;
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -268,16 +332,20 @@ async function createShopifyProduct(details, analysis, description, collectionId
   if (/\b(xs|s|m|l|xl|xxl|small|medium|large)\b/.test(allOptions)) optionTitle = "Size";
   else if (/\b(red|blue|black|white|pink|green|grey|gray|brown|yellow|purple)\b/.test(allOptions)) optionTitle = "Color";
 
+  const productType = analysis.productType || analysis.collection.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const taxonomyId = findTaxonomyId(productType, analysis.seoTitle);
+
   const productData = {
     product: {
       title: analysis.seoTitle.substring(0, 255),
       body_html: description,
       vendor: "FurryFable",
-      product_type: analysis.productType || analysis.collection.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+      product_type: productType,
       tags: analysis.tags.join(", "),
       status: "draft",
       options: [{ name: optionTitle }],
-      variants
+      variants,
+      product_category: { product_taxonomy_node_id: taxonomyId },
     }
   };
 
