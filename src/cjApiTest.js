@@ -4,20 +4,24 @@
  */
 import axios from "axios";
 
-const { CJ_EMAIL, CJ_API_KEY } = process.env;
+const { CJ_API_KEY } = process.env;
+const CJ_BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 
 async function getToken() {
-  const res = await axios.post(
-    "https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken",
-    { email: CJ_EMAIL, password: CJ_API_KEY }
-  );
-  return res.data.data.accessToken;
+  const res = await axios.post(`${CJ_BASE}/authentication/getAccessToken`, {
+    apiKey: CJ_API_KEY
+  });
+  if (res.data.result && res.data.data?.accessToken) {
+    return res.data.data.accessToken;
+  }
+  // Some accounts use the API key directly as the token
+  return CJ_API_KEY;
 }
 
 async function main() {
   const token = await getToken();
 
-  const BASE = "https://developers.cjdropshipping.com/api2.0/v1/product/listV2";
+  const BASE = `${CJ_BASE}/product/listV2`;
   const params = { page: 1, size: 10, sort: "asc", orderBy: 2, countryCode: "US" };
 
   const queryString = Object.entries(params).map(([k, v]) => `${k}=${v}`).join("&");
@@ -40,7 +44,7 @@ async function main() {
   console.log("\n\n=== VERIFICATION: /product/query on known removed PID ===");
   const removedPid = "1661977359978860544";
   const qRes = await axios.get(
-    "https://developers.cjdropshipping.com/api2.0/v1/product/query",
+    `${CJ_BASE}/product/query`,
     { params: { pid: removedPid, countryCode: "US" }, headers: { "CJ-Access-Token": token } }
   );
   console.log(`PID: ${removedPid}`);
