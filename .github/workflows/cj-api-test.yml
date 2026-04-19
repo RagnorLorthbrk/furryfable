@@ -1,0 +1,19 @@
+name: CJ API Test (for support)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - name: Run CJ API test
+        env:
+          CJ_EMAIL: ${{ secrets.CJ_EMAIL }}
+          CJ_API_KEY: ${{ secrets.CJ_API_KEY }}
+        run: node src/cjApiTest.js
